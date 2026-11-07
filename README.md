@@ -58,6 +58,34 @@ and removes the icon. Unplugging and replugging the cable reconnects on its own.
 Options: `--verbose` prints flow counts every 10 seconds, `--dns 8.8.8.8` overrides
 the DNS server (default: the one this PC uses), `--port` changes the relay port.
 
+## Who is connected
+
+```
+cd relay && uv run rtether phones
+```
+
+prints every phone on a USB cable (serial, model, Android version, whether the app is
+installed, whether its hotspot is on) and, for a phone whose hotspot is on, every phone
+joined to that hotspot (IP, MAC, reachable/stale). Example:
+
+```
+USB phones
+  LFEESKEUAYKRFYS4  RMX3392  Android 14  app installed  hotspot on 10.79.54.103
+Install the app on one:  uv run rtether install --serial <serial>   (or --all)
+
+Phones on RMX3392's hotspot (10.79.54.103)
+  10.79.54.27   aa:bb:cc:dd:ee:ff   reachable
+Give them the app: open  http://10.79.54.103:31418  on their phone (sharing must be on)
+```
+
+- USB phones: `uv run rtether install --serial <serial>` installs on one, `--all` on every
+  ready phone.
+- Hotspot phones: while "Share over my Wi-Fi hotspot" is on, the hub phone serves its own
+  APK at `http://<hotspot ip>:31418`. Teammates open that in their browser, tap Download,
+  install, and connect. A phone with nothing installed cannot be pushed to over Wi-Fi;
+  this link is the way to "send" it.
+- Entries can stay listed as `stale` for about a minute after a phone leaves.
+
 ## Share with teammates (hub mode)
 
 Android's own hotspot cannot forward a VPN, so the app does the routing itself. One phone
