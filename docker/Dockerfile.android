@@ -1,0 +1,30 @@
+# Builds the Reverse Tether APK without installing Java or the Android SDK on the host.
+#
+#   docker build -f docker/Dockerfile.android -o dist android/
+#
+# produces dist/rtether.apk (debug-signed).
+
+FROM gradle:8.7-jdk17 AS build
+
+USER root
+ENV ANDROID_HOME=/opt/android-sdk
+ENV PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends unzip wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Android command-line tools + SDK 34
+RUN mkdir -p $ANDROID_HOME/cmdline-tools \
+    && cd $ANDROID_HOME/cmdline-tools \
+    && wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cl.zip \
+    && unzip -q cl.zip && mv cmdline-tools latest && rm cl.zip \
+    && yes | sdkmanager --licenses > /dev/null \
+    && sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" > /dev/null
+
+WORKDIR /src
+COPY . .
+RUN gradle assembleDebug --no-daemon --console=plain
+
+FROM scratch
+COPY --from=build /src/app/build/outputs/apk/debug/app-debug.apk /rtether.apk
