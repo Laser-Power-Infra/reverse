@@ -76,6 +76,8 @@ the DNS server (default: the one this PC uses), `--port` changes the relay port.
 - One phone at a time. Plugging in a second replaces the first.
 - Android allows one VPN at a time, so other VPN apps must be off.
 - The APK is debug-signed. Fine for the team; a release keystore is a later step.
+- The phone can reach anything the PC can reach on the office network, but not
+  services bound to the PC's own loopback address.
 
 ## Development
 

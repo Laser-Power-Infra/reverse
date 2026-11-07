@@ -24,11 +24,12 @@ class RelayServer:
         dns_server: str,
         verbose: bool = False,
         connector: Connector = asyncio.open_connection,
+        allow_loopback: bool = False,
     ):
         self._host = host
         self._requested_port = port
         self._verbose = verbose
-        self.router = Router(self._send, dns_server, connector)
+        self.router = Router(self._send, dns_server, connector, allow_loopback=allow_loopback)
         self.port = port
         self._server: asyncio.AbstractServer | None = None
         self._client: asyncio.StreamWriter | None = None
@@ -92,6 +93,7 @@ class RelayServer:
                 if not frame:
                     continue
                 await self.router.handle(frame)
+                await writer.drain()  # backpressure: stop reading if the phone is not draining
         except FrameError as exc:
             log.warning("phone stream error: %s", exc)
         except (OSError, asyncio.IncompleteReadError) as exc:

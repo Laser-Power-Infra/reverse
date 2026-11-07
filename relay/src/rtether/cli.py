@@ -32,6 +32,18 @@ NO_CONNECTION_HINT = (
 )
 
 
+def start_app_or_warn(adb) -> str | None:
+    """Ask the phone to start the app; return a warning instead of failing if it cannot."""
+    try:
+        adb.start_app()
+    except AdbError as exc:
+        return (
+            f"Could not start the app over adb ({exc}). Open Reverse Tether on the phone "
+            "and press Start."
+        )
+    return None
+
+
 def device_status_line(devices: list[tuple[str, str]]) -> tuple[str, int]:
     if not devices:
         return "No phone found. Check the cable and that USB debugging is on.", 2
@@ -142,8 +154,14 @@ async def _cmd_run(adb, dns: str | None, port: int, verbose: bool) -> int:
     server = RelayServer("127.0.0.1", port, dns_server, verbose=verbose)
     try:
         adb.reverse(port)
-        await server.start()
-        adb.start_app()
+        try:
+            await server.start()
+        except OSError as exc:
+            print(f"Cannot listen on port {port} ({exc}). Is another rtether running?")
+            return 1
+        warning = start_app_or_warn(adb)
+        if warning:
+            print(warning)
         print("Relay running. Press Ctrl+C to stop.")
         await _wait_forever(server)
     except AdbError as exc:

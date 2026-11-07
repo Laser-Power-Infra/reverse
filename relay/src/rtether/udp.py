@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
 import time
 from collections.abc import Callable
 
@@ -11,6 +12,21 @@ from rtether.dns import DNS_VIRTUAL
 from rtether.packet import FlowKey, UDPDatagram, build_udp_packet
 
 log = logging.getLogger("rtether.udp")
+
+
+def _make_socket() -> socket.socket:
+    """An unconnected UDP socket that keeps receiving after an ICMP port-unreachable.
+
+    On Windows a UDP socket reports ICMP unreachable as WSAECONNRESET on the next
+    receive, and asyncio's proactor stops reading after that error. Turning the
+    behaviour off (SIO_UDP_CONNRESET) makes the socket behave like one on Linux.
+    """
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setblocking(False)
+    sock.bind(("0.0.0.0", 0))
+    if hasattr(socket, "SIO_UDP_CONNRESET"):
+        sock.ioctl(socket.SIO_UDP_CONNRESET, False)
+    return sock
 
 
 class _Protocol(asyncio.DatagramProtocol):
@@ -52,7 +68,7 @@ class UDPFlow:
             loop = asyncio.get_running_loop()
             try:
                 self._transport, _ = await loop.create_datagram_endpoint(
-                    lambda: _Protocol(self._on_reply), local_addr=("0.0.0.0", 0)
+                    lambda: _Protocol(self._on_reply), sock=_make_socket()
                 )
             except OSError as exc:
                 log.debug("udp endpoint for %s failed: %s", self.key, exc)
@@ -62,6 +78,12 @@ class UDPFlow:
             self._transport.sendto(dgram.data, self._remote)
         except OSError as exc:
             log.debug("udp send to %s failed: %s", self._remote, exc)
+
+    @property
+    def local_port(self) -> int:
+        if self._transport is None:
+            return 0
+        return self._transport.get_extra_info("sockname")[1]
 
     def close(self) -> None:
         self.closed = True

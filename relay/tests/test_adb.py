@@ -7,6 +7,7 @@ import pytest
 from rtether.adb import (
     ACTION_START,
     ACTION_STOP,
+    ACTIVITY,
     APP_PACKAGE,
     SERVICE,
     Adb,
@@ -19,6 +20,7 @@ from rtether.adb import (
 def test_constants():
     assert APP_PACKAGE == "com.laserpower.rtether"
     assert SERVICE == "com.laserpower.rtether/.TetherVpnService"
+    assert ACTIVITY == "com.laserpower.rtether/.MainActivity"
     assert ACTION_START == "com.laserpower.rtether.START"
     assert ACTION_STOP == "com.laserpower.rtether.STOP"
 
@@ -73,14 +75,12 @@ def test_reverse_builds_command(tmp_path):
 def test_start_and_stop_app_commands(tmp_path):
     run = FakeRun()
     adb = Adb(tmp_path / "adb.exe", runner=run)
+    # C4: the adb shell user may not start a BIND_VPN_SERVICE service directly,
+    # so the intents go through the app's own activity.
     adb.start_app()
-    assert run.calls[-1][1:] == [
-        "shell", "am", "start-foreground-service", "-n", SERVICE, "-a", ACTION_START,
-    ]
+    assert run.calls[-1][1:] == ["shell", "am", "start", "-n", ACTIVITY, "-a", ACTION_START]
     adb.stop_app()
-    assert run.calls[-1][1:] == [
-        "shell", "am", "start-foreground-service", "-n", SERVICE, "-a", ACTION_STOP,
-    ]
+    assert run.calls[-1][1:] == ["shell", "am", "start", "-n", ACTIVITY, "-a", ACTION_STOP]
 
 
 def test_run_raises_on_nonzero_exit(tmp_path):

@@ -27,7 +27,7 @@ async def echo_port():
 
 @pytest.fixture
 async def server():
-    srv = RelayServer("127.0.0.1", 0, dns_server="1.1.1.1")
+    srv = RelayServer("127.0.0.1", 0, dns_server="1.1.1.1", allow_loopback=True)
     await srv.start()
     yield srv
     await srv.stop()

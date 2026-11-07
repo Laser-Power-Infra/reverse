@@ -15,6 +15,7 @@ PLATFORM_TOOLS_SHA256 = "45f4d63113e895ebde0c90f194099a4676b6ac653bd28d54314a9e0
 
 APP_PACKAGE = "com.laserpower.rtether"
 SERVICE = f"{APP_PACKAGE}/.TetherVpnService"
+ACTIVITY = f"{APP_PACKAGE}/.MainActivity"
 ACTION_START = f"{APP_PACKAGE}.START"
 ACTION_STOP = f"{APP_PACKAGE}.STOP"
 
@@ -67,11 +68,13 @@ class Adb:
     def reverse_remove(self, port: int) -> None:
         self.run("reverse", "--remove", f"tcp:{port}")
 
+    # The adb shell user cannot start a BIND_VPN_SERVICE-protected service directly,
+    # so START/STOP go through the app's own activity, which forwards them.
     def start_app(self) -> None:
-        self.run("shell", "am", "start-foreground-service", "-n", SERVICE, "-a", ACTION_START)
+        self.run("shell", "am", "start", "-n", ACTIVITY, "-a", ACTION_START)
 
     def stop_app(self) -> None:
-        self.run("shell", "am", "start-foreground-service", "-n", SERVICE, "-a", ACTION_STOP)
+        self.run("shell", "am", "start", "-n", ACTIVITY, "-a", ACTION_STOP)
 
     def install(self, apk: Path) -> str:
         return self.run("install", "-r", str(apk), timeout=180)

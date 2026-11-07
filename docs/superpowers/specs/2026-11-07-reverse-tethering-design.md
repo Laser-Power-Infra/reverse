@@ -104,8 +104,11 @@ no dependencies beyond the Android SDK and Kotlin stdlib. Debug-signed for now.
 - One button. Start: calls `VpnService.prepare(this)`; if it returns an intent, launch it
   for the consent dialog; on OK start the service with START. Stop: sends STOP.
 - Shows a one-line status: "Stopped" / "Connecting to PC" / "Connected".
-- After consent has been granted once, the relay may start the service directly with
-  `adb shell am start-foreground-service -n com.laserpower.rtether/.TetherVpnService -a com.laserpower.rtether.START`.
+- The relay starts and stops the app over ADB through the activity, because the adb
+  shell user is not allowed to start a `BIND_VPN_SERVICE`-protected service directly:
+  `adb shell am start -n com.laserpower.rtether/.MainActivity -a com.laserpower.rtether.START`
+  (and `.STOP`). The activity forwards the action to the service and closes itself.
+  If VPN consent has not been granted yet, it shows the consent dialog instead.
 
 **Permissions**: `INTERNET`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_SPECIAL_USE`,
 `POST_NOTIFICATIONS` (requested at runtime on Android 13+). Service declares

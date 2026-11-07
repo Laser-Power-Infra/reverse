@@ -40,7 +40,7 @@ async def udp_port():
 
 @pytest.fixture
 async def relay():
-    server = RelayServer("127.0.0.1", 0, dns_server="127.0.0.1")
+    server = RelayServer("127.0.0.1", 0, dns_server="127.0.0.1", allow_loopback=True)
     await server.start()
     yield server
     await server.stop()

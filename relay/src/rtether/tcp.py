@@ -3,6 +3,8 @@
 The USB link between phone and relay is itself a reliable byte stream, so this
 translator does not retransmit. It acknowledges in-order data immediately, drops
 anything else, and lets the phone's own stack retransmit if it ever needs to.
+It does honour the phone's advertised receive window so bulk downloads cannot
+overrun the phone.
 """
 
 from __future__ import annotations
@@ -20,6 +22,7 @@ log = logging.getLogger("rtether.tcp")
 MSS = 1360
 WINDOW = 65535
 BACKPRESSURE_LIMIT = 262144
+CONNECT_TIMEOUT = 10.0
 
 _SEQ_MOD = 1 << 32
 
@@ -41,17 +44,21 @@ class TCPFlow:
         self.key = key
         self._send = send
         self._connector = connector
+        self.connect_timeout = CONNECT_TIMEOUT
         self.state = "CLOSED"
         self.last_activity = time.monotonic()
         self.isn = random.randrange(_SEQ_MOD)
         self.snd_una = self.isn
         self.snd_nxt = self.isn
         self.rcv_nxt = 0
+        self.phone_window = WINDOW
+        self.connect_task: asyncio.Task | None = None
         self._phone_isn = 0
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._pump: asyncio.Task | None = None
         self._fin_sent = False
+        self._window_event = asyncio.Event()
 
     # -- public -------------------------------------------------------------
 
@@ -61,13 +68,15 @@ class TCPFlow:
 
     async def handle(self, seg: TCPSegment) -> None:
         self.last_activity = time.monotonic()
+        self.phone_window = seg.window
+        self._window_event.set()
         if seg.flags & RST:
             self.close()
             return
         if seg.flags & SYN:
-            await self._on_syn(seg)
+            self._on_syn(seg)
             return
-        if self.state == "CLOSED":
+        if self.state in ("CLOSED", "SYN_RECEIVED"):
             return
         self._on_ack(seg)
         if self.state == "CLOSED":
@@ -84,9 +93,10 @@ class TCPFlow:
             self._emit(ACK)
 
     def close(self, send_rst: bool = False) -> None:
-        if send_rst and self.state != "CLOSED":
+        if send_rst and self.state not in ("CLOSED", "SYN_RECEIVED"):
             self._emit(RST | ACK)
         self.state = "CLOSED"
+        self._window_event.set()
         if self._pump is not None and not self._pump.done():
             self._pump.cancel()
         if self._writer is not None and not self._writer.is_closing():
@@ -94,22 +104,36 @@ class TCPFlow:
 
     # -- phone -> PC ----------------------------------------------------------
 
-    async def _on_syn(self, seg: TCPSegment) -> None:
+    def _on_syn(self, seg: TCPSegment) -> None:
         if self.state != "CLOSED":
-            if seg.seq == self._phone_isn:  # our SYN-ACK was lost; repeat it
-                self._send_synack()
+            if seg.seq != self._phone_isn:
+                self._emit(ACK)  # RFC 5961 challenge ACK: the phone will RST if stale
+            elif self.state != "SYN_RECEIVED":
+                self._send_synack()  # our SYN-ACK was lost; repeat it unchanged
             return
         self._phone_isn = seg.seq
         self.rcv_nxt = (seg.seq + 1) % _SEQ_MOD
+        self.state = "SYN_RECEIVED"
+        self.connect_task = asyncio.create_task(self._connect())
+
+    async def _connect(self) -> None:
         _, _, dst_ip, dst_port = self.key
         try:
-            self._reader, self._writer = await self._connector(dst_ip, dst_port)
-        except (TimeoutError, OSError) as exc:
+            reader, writer = await asyncio.wait_for(
+                self._connector(dst_ip, dst_port), self.connect_timeout
+            )
+        except (OSError, TimeoutError) as exc:
             log.debug("connect %s:%d failed: %s", dst_ip, dst_port, exc)
-            self._send_rst_for_syn()
-            self.state = "CLOSED"
+            if self.state == "SYN_RECEIVED":
+                self._send_rst_for_syn()
+                self.state = "CLOSED"
             return
+        if self.state != "SYN_RECEIVED":
+            writer.close()  # evicted or reset while connecting
+            return
+        self._reader, self._writer = reader, writer
         self.state = "ESTABLISHED"
+        self.snd_nxt = (self.isn + 1) % _SEQ_MOD
         self._send_synack()
         self._pump = asyncio.create_task(self._pump_socket())
 
@@ -119,6 +143,7 @@ class TCPFlow:
         if not (_seq_lt_eq(self.snd_una, seg.ack) and _seq_lt_eq(seg.ack, self.snd_nxt)):
             return  # acknowledges bytes we never sent; ignore
         self.snd_una = seg.ack
+        self._window_event.set()
         if self._fin_sent and seg.ack == self.snd_nxt and self.state == "LAST_ACK":
             self.close()
 
@@ -151,11 +176,21 @@ class TCPFlow:
 
     # -- PC -> phone ----------------------------------------------------------
 
+    def _in_flight(self) -> int:
+        return (self.snd_nxt - self.snd_una) % _SEQ_MOD
+
     async def _pump_socket(self) -> None:
         assert self._reader is not None
         try:
             while True:
-                chunk = await self._reader.read(MSS)
+                room = self.phone_window - self._in_flight()
+                if room <= 0:
+                    self._window_event.clear()
+                    await self._window_event.wait()
+                    if self.state == "CLOSED":
+                        return
+                    continue
+                chunk = await self._reader.read(min(MSS, room))
                 if not chunk:
                     self._on_socket_eof()
                     return
@@ -163,7 +198,7 @@ class TCPFlow:
                 self._emit(PSH | ACK, chunk)
         except asyncio.CancelledError:
             raise
-        except (OSError, asyncio.IncompleteReadError) as exc:
+        except OSError as exc:
             log.debug("socket error on %s: %s", self.key, exc)
             self.close(send_rst=True)
 
@@ -188,7 +223,6 @@ class TCPFlow:
         src_ip, src_port, dst_ip, dst_port = self.key
         seg = TCPSegment(dst_port, src_port, self.isn, self.rcv_nxt, SYN | ACK, WINDOW, b"")
         self._send(build_tcp_packet(dst_ip, src_ip, seg))
-        self.snd_nxt = (self.isn + 1) % _SEQ_MOD
 
     def _send_rst_for_syn(self) -> None:
         src_ip, src_port, dst_ip, dst_port = self.key

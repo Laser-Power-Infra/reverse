@@ -3,16 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from rtether.packet import (
+    ACK,
     PROTO_TCP,
     PROTO_UDP,
+    RST,
     SYN,
     FlowKey,
     PacketError,
+    TCPSegment,
+    build_tcp_packet,
     parse_ipv4,
     parse_tcp,
     parse_udp,
@@ -26,6 +31,9 @@ TCP_IDLE = 300
 TCP_HALF_CLOSED_IDLE = 30
 UDP_IDLE = 60
 DNS_IDLE = 10
+
+VIRTUAL_SUBNET = ipaddress.IPv4Network("10.8.0.0/24")  # the tunnel itself; nothing lives here
+LOOPBACK = ipaddress.IPv4Network("127.0.0.0/8")
 
 
 @dataclass
@@ -41,10 +49,12 @@ class Router:
         send: Callable[[bytes], None],
         dns_server: str,
         connector: Connector = asyncio.open_connection,
+        allow_loopback: bool = False,
     ):
         self._raw_send = send
         self._dns_server = dns_server
         self._connector = connector
+        self._allow_loopback = allow_loopback
         self.stats = Stats()
         self.tcp_flows: dict[FlowKey, TCPFlow] = {}
         self.udp_flows: dict[FlowKey, UDPFlow] = {}
@@ -52,6 +62,12 @@ class Router:
     def _send(self, packet: bytes) -> None:
         self.stats.tx += 1
         self._raw_send(packet)
+
+    def _unreachable(self, dst: str) -> bool:
+        address = ipaddress.IPv4Address(dst)
+        if address in VIRTUAL_SUBNET:
+            return True
+        return address in LOOPBACK and not self._allow_loopback
 
     async def handle(self, raw: bytes) -> None:
         self.stats.rx += 1
@@ -67,12 +83,20 @@ class Router:
             self.stats.dropped += 1
             log.debug("dropped packet: %s", exc)
 
-    async def _handle_tcp(self, src: str, dst: str, seg) -> None:
+    async def _handle_tcp(self, src: str, dst: str, seg: TCPSegment) -> None:
         key: FlowKey = (src, seg.src_port, dst, seg.dst_port)
         flow = self.tcp_flows.get(key)
+        if flow is not None and flow.state == "CLOSED":
+            self.tcp_flows.pop(key, None)
+            flow = None
         if flow is None:
+            if seg.flags & RST:
+                return
             if not seg.flags & SYN:
-                self.stats.dropped += 1
+                self._reset_stray(src, dst, seg)
+                return
+            if self._unreachable(dst):
+                self._refuse_syn(src, dst, seg)
                 return
             flow = TCPFlow(key, self._send, self._connector)
             self.tcp_flows[key] = flow
@@ -80,10 +104,23 @@ class Router:
         if flow.state == "CLOSED":
             self.tcp_flows.pop(key, None)
 
+    def _refuse_syn(self, src: str, dst: str, seg: TCPSegment) -> None:
+        reply = TCPSegment(seg.dst_port, seg.src_port, 0, seg.seq + 1, RST | ACK, 0, b"")
+        self._send(build_tcp_packet(dst, src, reply))
+
+    def _reset_stray(self, src: str, dst: str, seg: TCPSegment) -> None:
+        """A segment for a connection we do not know (relay restarted): reset it."""
+        ack = (seg.seq + len(seg.data)) % (1 << 32)
+        reply = TCPSegment(seg.dst_port, seg.src_port, seg.ack, ack, RST | ACK, 0, b"")
+        self._send(build_tcp_packet(dst, src, reply))
+
     async def _handle_udp(self, src: str, dst: str, dgram) -> None:
         key: FlowKey = (src, dgram.src_port, dst, dgram.dst_port)
         flow = self.udp_flows.get(key)
         if flow is None:
+            if self._unreachable(dst) and not (dst == "10.8.0.1" and dgram.dst_port == 53):
+                self.stats.dropped += 1
+                return
             flow = UDPFlow(key, self._send, self._dns_server)
             self.udp_flows[key] = flow
         await flow.handle(dgram)

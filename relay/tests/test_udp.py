@@ -77,6 +77,13 @@ async def test_unreachable_destination_does_not_crash():
     await asyncio.sleep(0.05)
     assert not flow.closed
     assert sent == []
+    # I4: the socket must still receive after the ICMP port-unreachable (Windows resets it).
+    poke = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    poke.sendto(b"still alive", ("127.0.0.1", flow.local_port))
+    poke.close()
+    await _wait_for(sent, 1)
+    assert len(sent) == 1
+    assert parse_udp(parse_ipv4(sent[0])).data == b"still alive"
     flow.close()
 
 

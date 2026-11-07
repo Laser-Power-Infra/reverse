@@ -46,6 +46,26 @@ def test_devices_command_reports_unauthorised(capsys):
     assert "Tap Allow" in capsys.readouterr().out
 
 
+def test_start_app_failure_is_a_warning_not_fatal():
+    """C4: if the app cannot be started over adb, keep the relay running and tell the user."""
+    from rtether.adb import AdbError
+    from rtether.cli import start_app_or_warn
+
+    class BrokenAdb:
+        def start_app(self):
+            raise AdbError("Error: Requires permission")
+
+    warning = start_app_or_warn(BrokenAdb())
+    assert warning is not None
+    assert "press Start" in warning
+
+    class GoodAdb:
+        def start_app(self):
+            pass
+
+    assert start_app_or_warn(GoodAdb()) is None
+
+
 def test_run_requires_adb(tmp_path: Path, capsys):
     code = main(["run"], make_adb=lambda tools_dir: Adb.locate(tmp_path))
     assert code == 1
