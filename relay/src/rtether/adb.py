@@ -81,6 +81,28 @@ class Adb:
     def install(self, apk: Path) -> str:
         return self.run("install", "-r", str(apk), timeout=180)
 
+    # -- per-phone queries used by `rtether phones` ---------------------------------
+
+    def model(self) -> str:
+        return self.run("shell", "getprop", "ro.product.model").strip()
+
+    def android_version(self) -> str:
+        return self.run("shell", "getprop", "ro.build.version.release").strip()
+
+    def app_installed(self) -> bool:
+        return "package:" in self.run("shell", "pm", "path", APP_PACKAGE)
+
+    def hotspot(self) -> tuple[str, str] | None:
+        """(interface, ip) of the phone's hotspot, or None when it is off."""
+        from rtether.phones import parse_hotspot_addr
+
+        return parse_hotspot_addr(self.run("shell", "ip", "-4", "-o", "addr", "show"))
+
+    def neighbours(self, iface: str) -> list[tuple[str, str, str]]:
+        from rtether.phones import parse_neighbours
+
+        return parse_neighbours(self.run("shell", "ip", "neigh", "show", "dev", iface))
+
 
 def setup_platform_tools(
     tools_dir: Path,

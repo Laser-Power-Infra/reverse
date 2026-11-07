@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import ClassVar
 
 from rtether.adb import Adb
 from rtether.cli import device_status_line, main
@@ -75,6 +76,73 @@ def test_serial_selects_device(capsys):
     assert seen["serial"] == "B"
     assert main(["devices", "--serial", "Z"], make_adb=make_adb) == 2
     assert "Phone Z not found" in capsys.readouterr().out
+
+
+class FakePhone:
+    """Per-serial fake used by `phones` and `install --all`."""
+
+    installs: ClassVar[list[str]] = []
+
+    def __init__(self, serial, model="RMX3392", version="14", installed=True, hotspot=None,
+                 neighbours=()):
+        self.serial = serial
+        self._model = model
+        self._version = version
+        self._installed = installed
+        self._hotspot = hotspot
+        self._neighbours = list(neighbours)
+
+    def model(self):
+        return self._model
+
+    def android_version(self):
+        return self._version
+
+    def app_installed(self):
+        return self._installed
+
+    def hotspot(self):
+        return self._hotspot
+
+    def neighbours(self, iface):
+        return self._neighbours
+
+    def install(self, apk):
+        FakePhone.installs.append(self.serial)
+        return "Success"
+
+
+def test_phones_command_lists_usb_and_hotspot(capsys):
+    devices = [("A", "device"), ("Z", "unauthorized")]
+    phones = {
+        "A": FakePhone("A", hotspot=("ap0", "10.79.54.103"),
+                       neighbours=[("10.79.54.27", "aa:bb:cc:dd:ee:ff", "reachable")]),
+    }
+
+    def make_adb(tools_dir, serial=None):
+        return FakeAdb(devices) if serial is None else phones[serial]
+
+    assert main(["phones"], make_adb=make_adb) == 0
+    out = capsys.readouterr().out
+    assert "  A  RMX3392  Android 14  app installed  hotspot on 10.79.54.103" in out
+    assert "  Z  (not authorised: tap Allow on the phone)" in out
+    assert "Phones on RMX3392's hotspot (10.79.54.103)" in out
+    assert "  10.79.54.27   aa:bb:cc:dd:ee:ff   reachable" in out
+    assert "http://10.79.54.103:31418" in out
+
+
+def test_install_all_installs_on_every_ready_phone(tmp_path: Path, capsys):
+    apk = tmp_path / "rtether.apk"
+    apk.write_bytes(b"apk")
+    FakePhone.installs = []
+    devices = [("A", "device"), ("B", "device"), ("Z", "unauthorized")]
+
+    def make_adb(tools_dir, serial=None):
+        return FakeAdb(devices) if serial is None else FakePhone(serial)
+
+    assert main(["install", "--all", "--apk", str(apk)], make_adb=make_adb) == 0
+    assert FakePhone.installs == ["A", "B"]
+    assert "Z" in capsys.readouterr().out  # skipped phone is mentioned
 
 
 def test_start_app_failure_is_a_warning_not_fatal():

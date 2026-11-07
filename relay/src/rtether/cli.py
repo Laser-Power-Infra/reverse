@@ -10,6 +10,7 @@ from pathlib import Path
 from rtether import __version__
 from rtether.adb import Adb, AdbError, setup_platform_tools
 from rtether.dns import discover_dns_server
+from rtether.phones import HotspotReport, UsbPhone, format_report
 from rtether.server import RelayServer
 
 DEFAULT_PORT = 31416
@@ -74,8 +75,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("setup", help="download Google's adb and print the phone checklist")
     devices = sub.add_parser("devices", help="show whether the phone is ready")
+    sub.add_parser("phones", help="list phones on USB and on the hub phone's hotspot")
     install = sub.add_parser("install", help="install the app on the phone")
     install.add_argument("--apk", type=Path, default=DEFAULT_APK)
+    install.add_argument("--all", action="store_true", help="install on every ready USB phone")
     run = sub.add_parser("run", help="start reverse tethering")
     for command in (devices, install, run):
         command.add_argument("--serial", help="which phone, when more than one is plugged in")
@@ -102,13 +105,17 @@ def main(argv: list[str] | None = None, make_adb=Adb.locate) -> int:
     if args.command == "setup":
         return _cmd_setup()
     try:
-        adb = make_adb(TOOLS_DIR, args.serial)
+        adb = make_adb(TOOLS_DIR, getattr(args, "serial", None))
     except AdbError as exc:
         print(exc)
         return 1
     if args.command == "devices":
         return _cmd_devices(adb)
+    if args.command == "phones":
+        return _cmd_phones(adb, make_adb)
     if args.command == "install":
+        if args.all:
+            return _cmd_install_all(adb, make_adb, args.apk)
         return _cmd_install(adb, args.apk)
     return asyncio.run(_cmd_run(adb, args.dns, args.port, args.verbose))
 
@@ -151,6 +158,63 @@ def _cmd_install(adb, apk: Path) -> int:
         print(exc)
         return 1
     return 0
+
+
+def _cmd_phones(adb, make_adb) -> int:
+    try:
+        devices = adb.devices()
+    except AdbError as exc:
+        print(exc)
+        return 1
+    usb: list[UsbPhone] = []
+    hotspots: list[HotspotReport] = []
+    for serial, state in devices:
+        if state != "device":
+            usb.append(UsbPhone(serial, state))
+            continue
+        phone = make_adb(TOOLS_DIR, serial)
+        try:
+            hotspot = phone.hotspot()
+            usb.append(
+                UsbPhone(
+                    serial,
+                    state,
+                    phone.model(),
+                    phone.android_version(),
+                    phone.app_installed(),
+                    hotspot[1] if hotspot else None,
+                )
+            )
+            if hotspot:
+                iface, ip = hotspot
+                hotspots.append(HotspotReport(usb[-1].model, ip, phone.neighbours(iface)))
+        except AdbError as exc:
+            usb.append(UsbPhone(serial, f"error: {exc}"))
+    print(format_report(usb, hotspots), end="")
+    return 0
+
+
+def _cmd_install_all(adb, make_adb, apk: Path) -> int:
+    if not apk.exists():
+        print(f"APK not found at {apk}. Build it first (see README).")
+        return 1
+    try:
+        devices = adb.devices()
+    except AdbError as exc:
+        print(exc)
+        return 1
+    failures = 0
+    for serial, state in devices:
+        if state != "device":
+            print(f"Skipping {serial}: {state} (tap Allow on the phone)")
+            continue
+        print(f"Installing on {serial}...")
+        try:
+            print("  " + make_adb(TOOLS_DIR, serial).install(apk).strip())
+        except AdbError as exc:
+            failures += 1
+            print(f"  failed: {exc}")
+    return 1 if failures else 0
 
 
 async def _cmd_run(adb, dns: str | None, port: int, verbose: bool) -> int:
