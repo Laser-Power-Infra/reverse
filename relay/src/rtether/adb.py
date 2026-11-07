@@ -36,21 +36,23 @@ def parse_devices(output: str) -> list[tuple[str, str]]:
 
 
 class Adb:
-    def __init__(self, exe: Path, runner=subprocess.run):
+    def __init__(self, exe: Path, runner=subprocess.run, serial: str | None = None):
         self.exe = Path(exe)
         self._runner = runner
+        self.serial = serial
 
     @classmethod
-    def locate(cls, tools_dir: Path) -> Adb:
+    def locate(cls, tools_dir: Path, serial: str | None = None) -> Adb:
         exe = Path(tools_dir) / "platform-tools" / "adb.exe"
         if not exe.exists():
             raise AdbError("adb not found: run rtether setup first")
-        return cls(exe)
+        return cls(exe, serial=serial)
 
     def run(self, *args: str, timeout: float = 30) -> str:
+        target = ["-s", self.serial] if self.serial else []
         try:
             result = self._runner(
-                [str(self.exe), *args], capture_output=True, text=True, timeout=timeout
+                [str(self.exe), *target, *args], capture_output=True, text=True, timeout=timeout
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise AdbError(f"adb {' '.join(args)} failed: {exc}") from exc

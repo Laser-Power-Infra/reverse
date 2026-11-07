@@ -83,6 +83,16 @@ def test_start_and_stop_app_commands(tmp_path):
     assert run.calls[-1][1:] == ["shell", "am", "start", "-n", ACTIVITY, "-a", ACTION_STOP]
 
 
+def test_serial_is_passed_to_every_call(tmp_path):
+    run = FakeRun(stdout="List of devices attached\nB\tdevice\n")
+    adb = Adb(tmp_path / "adb.exe", runner=run, serial="B")
+    adb.devices()
+    assert run.calls[-1][1:3] == ["-s", "B"]
+    adb.reverse(31416)
+    assert run.calls[-1][1:] == ["-s", "B", "reverse", "tcp:31416", "tcp:31416"]
+    assert Adb.locate.__code__.co_varnames[:3] == ("cls", "tools_dir", "serial")
+
+
 def test_run_raises_on_nonzero_exit(tmp_path):
     adb = Adb(tmp_path / "adb.exe", runner=FakeRun(returncode=1))
     with pytest.raises(AdbError):

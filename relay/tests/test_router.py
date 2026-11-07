@@ -158,6 +158,20 @@ async def test_stray_segment_gets_rst():
     assert seg.ack == 505
 
 
+async def test_two_sources_get_independent_flows(tcp_port):
+    """Hub mode relies on this: packets from 10.8.0.2 and 10.8.0.10 are separate flows."""
+    sent: list[bytes] = []
+    router = make_router(sent)
+    same_ports = TCPSegment(40000, tcp_port, 100, 0, SYN, 65535, b"")
+    await router.handle(build_tcp_packet("10.8.0.2", "127.0.0.1", same_ports))
+    await router.handle(build_tcp_packet("10.8.0.10", "127.0.0.1", same_ports))
+    await settle(router)
+    assert len(router.tcp_flows) == 2
+    destinations = sorted(parse_ipv4(raw).dst for raw in sent)
+    assert destinations == ["10.8.0.10", "10.8.0.2"]
+    router.reset()
+
+
 async def test_loopback_blocked_by_default(tcp_port):
     """I5: the phone must not reach services bound to the PC's own loopback."""
     sent: list[bytes] = []

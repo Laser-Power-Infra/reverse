@@ -44,14 +44,25 @@ def start_app_or_warn(adb) -> str | None:
     return None
 
 
-def device_status_line(devices: list[tuple[str, str]]) -> tuple[str, int]:
+def device_status_line(
+    devices: list[tuple[str, str]], serial: str | None = None
+) -> tuple[str, int]:
+    if serial:
+        states = {found: state for found, state in devices if found == serial}
+        if not states:
+            return f"Phone {serial} not found. Check the cable and that USB debugging is on.", 2
+        if states[serial] == "unauthorized":
+            return "Phone found but not authorised. Tap Allow on the phone.", 2
+        if states[serial] == "device":
+            return f"Phone ready: {serial}", 0
+        return f"Phone {serial} is {states[serial]}; reconnect the cable.", 2
     if not devices:
         return "No phone found. Check the cable and that USB debugging is on.", 2
     if any(state == "unauthorized" for _, state in devices):
         return "Phone found but not authorised. Tap Allow on the phone.", 2
-    ready = [serial for serial, state in devices if state == "device"]
+    ready = [found for found, state in devices if state == "device"]
     if len(ready) > 1:
-        return "More than one phone connected; leave only one.", 2
+        return "More than one phone connected; leave only one or pass --serial.", 2
     if len(ready) == 1:
         return f"Phone ready: {ready[0]}", 0
     return "No phone found. Check the cable and that USB debugging is on.", 2
@@ -62,10 +73,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"rtether {__version__}")
     sub = parser.add_subparsers(dest="command")
     sub.add_parser("setup", help="download Google's adb and print the phone checklist")
-    sub.add_parser("devices", help="show whether the phone is ready")
+    devices = sub.add_parser("devices", help="show whether the phone is ready")
     install = sub.add_parser("install", help="install the app on the phone")
     install.add_argument("--apk", type=Path, default=DEFAULT_APK)
     run = sub.add_parser("run", help="start reverse tethering")
+    for command in (devices, install, run):
+        command.add_argument("--serial", help="which phone, when more than one is plugged in")
     run.add_argument("--dns", help="upstream DNS server (default: this PC's)")
     run.add_argument("--port", type=int, default=DEFAULT_PORT)
     run.add_argument("--verbose", action="store_true")
@@ -89,7 +102,7 @@ def main(argv: list[str] | None = None, make_adb=Adb.locate) -> int:
     if args.command == "setup":
         return _cmd_setup()
     try:
-        adb = make_adb(TOOLS_DIR)
+        adb = make_adb(TOOLS_DIR, args.serial)
     except AdbError as exc:
         print(exc)
         return 1
@@ -115,7 +128,7 @@ def _cmd_setup() -> int:
 
 def _cmd_devices(adb) -> int:
     try:
-        message, code = device_status_line(adb.devices())
+        message, code = device_status_line(adb.devices(), getattr(adb, "serial", None))
     except AdbError as exc:
         print(exc)
         return 1
@@ -127,7 +140,7 @@ def _cmd_install(adb, apk: Path) -> int:
     if not apk.exists():
         print(f"APK not found at {apk}. Build it first (see README).")
         return 1
-    message, code = device_status_line(adb.devices())
+    message, code = device_status_line(adb.devices(), getattr(adb, "serial", None))
     if code:
         print(message)
         return code
@@ -142,7 +155,7 @@ def _cmd_install(adb, apk: Path) -> int:
 
 async def _cmd_run(adb, dns: str | None, port: int, verbose: bool) -> int:
     try:
-        message, code = device_status_line(adb.devices())
+        message, code = device_status_line(adb.devices(), getattr(adb, "serial", None))
     except AdbError as exc:
         print(exc)
         return 1
