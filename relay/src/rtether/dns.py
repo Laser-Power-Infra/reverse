@@ -12,8 +12,10 @@ _POWERSHELL_CMD = [
     "powershell",
     "-NoProfile",
     "-Command",
-    "(Get-DnsClientServerAddress -AddressFamily IPv4 | "
-    "Where-Object {$_.ServerAddresses}).ServerAddresses",
+    (
+        "(Get-DnsClientServerAddress -AddressFamily IPv4 | "
+        "Where-Object {$_.ServerAddresses}).ServerAddresses"
+    ),
 ]
 
 
@@ -36,6 +38,6 @@ def discover_dns_server(runner=subprocess.run) -> str:
     try:
         result = runner(_POWERSHELL_CMD, capture_output=True, text=True, timeout=5)
         found = parse_dns_output(result.stdout or "")
-    except Exception:
+    except (OSError, subprocess.SubprocessError, ValueError):
         found = None
     return found or FALLBACK_DNS

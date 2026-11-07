@@ -76,9 +76,8 @@ class TCPFlow:
             # Out of order or duplicate: tell the phone what we expect, drop the rest.
             self._emit(ACK)
             return
-        if seg.data:
-            if not self._accept_data(seg.data):
-                return  # backpressure: no ACK, the phone will retransmit later
+        if seg.data and not self._accept_data(seg.data):
+            return  # backpressure: no ACK, the phone will retransmit later
         if seg.flags & FIN:
             self._on_phone_fin()
         elif seg.data:
@@ -97,15 +96,15 @@ class TCPFlow:
 
     async def _on_syn(self, seg: TCPSegment) -> None:
         if self.state != "CLOSED":
-            if seg.seq == self._phone_isn:
-                self._send_synack()  # our SYN-ACK was lost; repeat it
+            if seg.seq == self._phone_isn:  # our SYN-ACK was lost; repeat it
+                self._send_synack()
             return
         self._phone_isn = seg.seq
         self.rcv_nxt = (seg.seq + 1) % _SEQ_MOD
         _, _, dst_ip, dst_port = self.key
         try:
             self._reader, self._writer = await self._connector(dst_ip, dst_port)
-        except (OSError, asyncio.TimeoutError) as exc:
+        except (TimeoutError, OSError) as exc:
             log.debug("connect %s:%d failed: %s", dst_ip, dst_port, exc)
             self._send_rst_for_syn()
             self.state = "CLOSED"

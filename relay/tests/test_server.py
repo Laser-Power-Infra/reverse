@@ -58,7 +58,7 @@ async def test_client_frames_reach_router_and_replies_are_framed(server, echo_po
 
 
 async def test_keepalive_frames_ignored(server):
-    reader, writer = await connect(server)
+    _, writer = await connect(server)
     writer.write(b"\x00\x00")
     await writer.drain()
     await asyncio.sleep(0.05)
@@ -73,7 +73,7 @@ async def test_second_client_resets_router(server, echo_port):
     await writer1.drain()
     await asyncio.sleep(0.05)
     assert len(server.router.udp_flows) == 1
-    reader2, writer2 = await connect(server)
+    _, writer2 = await connect(server)
     await asyncio.sleep(0.05)
     assert server.router.udp_flows == {}
     await asyncio.wait_for(reader1.read(), 2)  # drains anything buffered, returns at EOF
@@ -82,7 +82,7 @@ async def test_second_client_resets_router(server, echo_port):
 
 
 async def test_disconnect_resets_router(server, echo_port):
-    reader, writer = await connect(server)
+    _, writer = await connect(server)
     writer.write(encode_frame(udp_packet(echo_port)))
     await writer.drain()
     await asyncio.sleep(0.05)

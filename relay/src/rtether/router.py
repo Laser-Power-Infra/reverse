@@ -7,7 +7,16 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from rtether.packet import PROTO_TCP, PROTO_UDP, SYN, FlowKey, PacketError, parse_ipv4, parse_tcp, parse_udp
+from rtether.packet import (
+    PROTO_TCP,
+    PROTO_UDP,
+    SYN,
+    FlowKey,
+    PacketError,
+    parse_ipv4,
+    parse_tcp,
+    parse_udp,
+)
 from rtether.tcp import Connector, TCPFlow
 from rtether.udp import UDPFlow
 
