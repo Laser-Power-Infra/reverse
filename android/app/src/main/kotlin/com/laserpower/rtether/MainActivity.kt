@@ -110,7 +110,12 @@ class MainActivity : AppCompatActivity() {
             !usbRunning -> getString(R.string.hub_needs_usb)
             !sharing -> getString(R.string.hub_off)
             address == "?" -> getString(R.string.hub_no_hotspot)
-            else -> getString(R.string.hub_on, address, TetherVpnService.hubClients.value)
+            else -> getString(
+                R.string.hub_on,
+                address,
+                TetherVpnService.hubClients.value,
+                address.substringBefore(":"),
+            )
         }
         val clientRunning = TetherVpnService.mode.value == TetherVpnService.MODE_CLIENT
         connectHub.isEnabled = !usbRunning && !clientRunning

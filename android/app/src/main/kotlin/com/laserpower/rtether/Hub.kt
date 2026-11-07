@@ -6,6 +6,7 @@ package com.laserpower.rtether
  */
 object HubProtocol {
     const val HUB_PORT = 31417
+    const val APK_PORT = 31418
     const val MAX_CLIENTS = 8
     const val POOL_FIRST = 10
     const val POOL_LAST = 250

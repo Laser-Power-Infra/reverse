@@ -91,6 +91,7 @@ class TetherVpnService : VpnService() {
     private var tunnel: Tunnel? = null
     private var tunFd: ParcelFileDescriptor? = null
     private var hub: HubServer? = null
+    private var apkServer: ApkServer? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var stateJob: Job? = null
     private var hubJob: Job? = null
@@ -221,6 +222,13 @@ class TetherVpnService : VpnService() {
         }
         hub = server
         t.hub = server
+        apkServer = ApkServer(HubProtocol.APK_PORT, { protect(it) }, applicationInfo.sourceDir).also {
+            try {
+                it.start()
+            } catch (e: Exception) {
+                Log.w(TAG, "apk server failed to start: ${e.message}")
+            }
+        }
         hubJob = scope.launch {
             launch { server.clientCount.collect { _hubClients.value = it } }
             while (isActive) {
@@ -237,6 +245,8 @@ class TetherVpnService : VpnService() {
         tunnel?.hub = null
         hub?.stop()
         hub = null
+        apkServer?.stop()
+        apkServer = null
         _hubAddress.value = ""
         _hubClients.value = 0
     }

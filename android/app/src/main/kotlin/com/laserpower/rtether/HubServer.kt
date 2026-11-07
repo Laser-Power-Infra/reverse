@@ -1,9 +1,5 @@
 package com.laserpower.rtether
 
-import android.os.ParcelFileDescriptor
-import android.system.ErrnoException
-import android.system.Os
-import android.system.OsConstants
 import android.util.Log
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -13,7 +9,6 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
-import java.net.InetAddress
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,14 +16,10 @@ import kotlin.concurrent.thread
 
 /**
  * Accepts teammates' phones on the hotspot and relays their packets to the upstream link.
- *
- * The listening socket and every accepted socket are created through [Os] so their file
- * descriptors can be protected from the VPN: on this phone every unprotected app socket is
- * routed into the tunnel, while protected ones use the normal local-network routes and so
- * reach hotspot clients on ap0.
+ * Sockets come from a [ProtectedListener] so they bypass this phone's own VPN.
  */
 class HubServer(
-    private val protectFd: (Int) -> Boolean,
+    protectFd: (Int) -> Boolean,
     private val upstream: (ByteArray, Int) -> Boolean,
 ) {
     companion object {
@@ -38,36 +29,29 @@ class HubServer(
 
     private class Client(val ip: Int, val fd: FileDescriptor, val output: OutputStream)
 
+    private val listener = ProtectedListener(HubProtocol.HUB_PORT, protectFd, HubProtocol.MAX_CLIENTS)
     private val pool = AddressPool()
     private val clients = ConcurrentHashMap<Int, Client>()
     private val _clientCount = MutableStateFlow(0)
     val clientCount: StateFlow<Int> = _clientCount
 
     @Volatile private var running = false
-    private var listenFd: FileDescriptor? = null
-    private var acceptThread: Thread? = null
     private var keepaliveThread: Thread? = null
 
     fun start() {
         if (running) return
         running = true
-        val fd = Os.socket(OsConstants.AF_INET, OsConstants.SOCK_STREAM, 0)
-        protect(fd)
-        Os.setsockoptInt(fd, OsConstants.SOL_SOCKET, OsConstants.SO_REUSEADDR, 1)
-        Os.bind(fd, InetAddress.getByName("0.0.0.0"), HubProtocol.HUB_PORT)
-        Os.listen(fd, HubProtocol.MAX_CLIENTS)
-        listenFd = fd
-        acceptThread = thread(name = "hub-accept") { acceptLoop(fd) }
+        listener.start()
+        thread(name = "hub-accept") { acceptLoop() }
         keepaliveThread = thread(name = "hub-keepalive") { keepaliveLoop() }
         Log.i(TAG, "hub listening on port ${HubProtocol.HUB_PORT}")
     }
 
     fun stop() {
         running = false
-        listenFd?.let { closeQuietly(it) }
-        listenFd = null
+        listener.close()
         keepaliveThread?.interrupt()
-        for (client in clients.values) closeQuietly(client.fd)
+        for (client in clients.values) ProtectedListener.closeQuietly(client.fd)
     }
 
     /** Writes a packet from the relay to the teammate that owns its destination address. */
@@ -76,25 +60,13 @@ class HubServer(
         return writeFrame(client, packet, length)
     }
 
-    private fun protect(fd: FileDescriptor) {
-        ParcelFileDescriptor.dup(fd).use { dup ->
-            if (!protectFd(dup.fd)) Log.w(TAG, "could not protect hub socket")
-        }
-    }
-
-    private fun acceptLoop(fd: FileDescriptor) {
+    private fun acceptLoop() {
         while (running) {
-            val clientFd = try {
-                Os.accept(fd, null)
-            } catch (e: ErrnoException) {
-                if (running) Log.d(TAG, "hub accept ended: ${e.message}")
-                break
-            }
+            val clientFd = listener.accept() ?: break
             if (clients.size >= HubProtocol.MAX_CLIENTS) {
-                closeQuietly(clientFd)
+                ProtectedListener.closeQuietly(clientFd)
                 continue
             }
-            protect(clientFd)
             thread(name = "hub-client") { serve(clientFd) }
         }
     }
@@ -139,7 +111,7 @@ class HubServer(
                 pool.release(ip)
                 _clientCount.value = clients.size
             }
-            closeQuietly(fd)
+            ProtectedListener.closeQuietly(fd)
         }
     }
 
@@ -165,21 +137,8 @@ class HubServer(
             }
             true
         } catch (e: IOException) {
-            closeQuietly(client.fd)
+            ProtectedListener.closeQuietly(client.fd)
             false
-        }
-    }
-
-    private fun closeQuietly(fd: FileDescriptor) {
-        try {
-            Os.shutdown(fd, OsConstants.SHUT_RDWR)
-        } catch (e: ErrnoException) {
-            // not connected or already shut
-        }
-        try {
-            Os.close(fd)
-        } catch (e: ErrnoException) {
-            // already closed
         }
     }
 }
