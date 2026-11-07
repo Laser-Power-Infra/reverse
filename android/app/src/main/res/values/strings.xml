@@ -4,5 +4,16 @@
     <string name="start">Start</string>
     <string name="stop">Stop</string>
     <string name="notification_text">Reverse tethering active</string>
+    <string name="section_usb">Internet from the PC (USB)</string>
     <string name="help">Plug the phone into the PC and run rtether there. Press Start once to grant VPN permission.</string>
+    <string name="section_share">Share with teammates</string>
+    <string name="share_switch">Share over my Wi-Fi hotspot</string>
+    <string name="hub_needs_usb">Start the USB link first, then turn on your Wi-Fi hotspot.</string>
+    <string name="hub_off">Turn on the Wi-Fi hotspot in Settings, then switch sharing on.</string>
+    <string name="hub_no_hotspot">Sharing is on but the Wi-Fi hotspot is off. Turn it on in Settings.</string>
+    <string name="hub_on">Teammates: join this phone\'s hotspot, open Reverse Tether and enter\n%1$s\n\n%2$d connected</string>
+    <string name="section_client">Use a teammate\'s phone</string>
+    <string name="client_help">Join their hotspot, then enter the address shown on their screen.</string>
+    <string name="hub_host_hint">Hub phone address, e.g. 10.79.54.103</string>
+    <string name="connect_hub">Connect to phone hub</string>
 </resources>
