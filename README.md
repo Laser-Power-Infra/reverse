@@ -58,6 +58,33 @@ and removes the icon. Unplugging and replugging the cable reconnects on its own.
 Options: `--verbose` prints flow counts every 10 seconds, `--dns 8.8.8.8` overrides
 the DNS server (default: the one this PC uses), `--port` changes the relay port.
 
+## Share with teammates (hub mode)
+
+Android's own hotspot cannot forward a VPN, so the app does the routing itself. One phone
+on USB becomes the hub; teammates join its hotspot and run the same app in client mode.
+
+On the hub phone (the one on USB):
+
+1. Start the USB link as usual (`uv run rtether run` on the PC).
+2. Settings > Hotspot: turn the Wi-Fi hotspot on. Also turn **off** "turn off hotspot
+   automatically" so it survives idle time.
+3. In Reverse Tether, switch on "Share over my Wi-Fi hotspot". The screen shows the
+   address teammates must type, for example `10.79.54.103:31417`, and how many are connected.
+   The address changes every time the hotspot is restarted; read it from the screen.
+
+On each teammate's phone:
+
+1. Install `rtether.apk` (share the file; no PC needed).
+2. Join the hub phone's hotspot. It will say "no internet"; that is expected.
+3. Open Reverse Tether, type the address from the hub's screen into "Hub phone address",
+   tap "Connect to phone hub", and tap OK on the VPN dialog the first time.
+4. If the phone has mobile data, Android may prefer it over the no-internet hotspot and
+   drop the Wi-Fi. Turn mobile data off while using the hub.
+
+Limits: up to 8 teammates (and whatever the phone's hotspot allows); everyone shares one
+USB link and one relay, fine for browsing and chat; the same "No connection" banners from
+Facebook/YouTube/Play Store apply on teammates' phones.
+
 ## Troubleshooting
 
 | Message | What to do |
@@ -65,7 +92,8 @@ the DNS server (default: the one this PC uses), `--port` changes the relay port.
 | `run rtether setup first` | Run `uv run rtether setup`. |
 | `No phone found` | Check the cable and that USB debugging is on. Try another USB port. |
 | `Phone found but not authorised` | Tap "Allow" on the phone's USB debugging prompt. |
-| `More than one phone connected` | Unplug the others. |
+| `More than one phone connected` | Unplug the others, or pass `--serial <id>` (see `rtether devices`). |
+| Teammate cannot connect to the hub | Check they are on the hub's hotspot, the address matches the hub screen, and sharing is switched on. |
 | `No connection from the phone yet` | Open Reverse Tether on the phone and press Start once to grant VPN permission. |
 | `APK not found` | Build it with the Docker command above. |
 | Phone shows the key icon but nothing loads | Run with `--verbose`; if `tcp=` stays 0, another VPN app may be active on the phone. |
