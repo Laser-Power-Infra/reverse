@@ -15,9 +15,24 @@ android {
         versionName = "0.1.0"
     }
 
+    // One stable key for every build, so updates install over earlier versions on every
+    // phone. It is a team-internal key committed to the repo, not a Play Store key.
+    signingConfigs {
+        create("team") {
+            storeFile = file("../keystore/rtether.keystore")
+            storePassword = "android"
+            keyAlias = "rtether"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("team")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("team")
         }
     }
 

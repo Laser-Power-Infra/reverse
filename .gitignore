@@ -10,3 +10,4 @@ android/**/build/
 android/local.properties
 *.apk
 .superpowers/
+android/keystore/
