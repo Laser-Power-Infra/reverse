@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+relay/.platform-tools/
+dist/
+android/.gradle/
+android/**/build/
+android/local.properties
+*.apk
+.superpowers/
