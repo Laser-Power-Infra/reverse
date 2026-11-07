@@ -24,7 +24,7 @@ RUN mkdir -p $ANDROID_HOME/cmdline-tools \
 
 WORKDIR /src
 COPY . .
-RUN gradle assembleDebug --no-daemon --console=plain
+RUN gradle testDebugUnitTest assembleDebug --no-daemon --console=plain
 
 FROM scratch
 COPY --from=build /src/app/build/outputs/apk/debug/app-debug.apk /rtether.apk
