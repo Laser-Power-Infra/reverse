@@ -134,7 +134,7 @@ def parse_udp(ip: IPv4Packet) -> UDPDatagram:
     return UDPDatagram(src_port, dst_port, dgram[_UDP_HDR.size : length])
 
 
-def _build_ipv4(src: str, dst: str, protocol: int, payload: bytes, ttl: int) -> bytes:
+def build_ipv4(src: str, dst: str, protocol: int, payload: bytes, ttl: int = 64) -> bytes:
     total_len = _IPV4_HDR.size + len(payload)
     header = _IPV4_HDR.pack(
         0x45,
@@ -166,7 +166,7 @@ def build_tcp_packet(src: str, dst: str, seg: TCPSegment, ttl: int = 64) -> byte
     )
     csum = _pseudo_checksum(src, dst, PROTO_TCP, header + seg.data)
     segment = header[:16] + csum.to_bytes(2, "big") + header[18:] + seg.data
-    return _build_ipv4(src, dst, PROTO_TCP, segment, ttl)
+    return build_ipv4(src, dst, PROTO_TCP, segment, ttl)
 
 
 def build_udp_packet(src: str, dst: str, dgram: UDPDatagram, ttl: int = 64) -> bytes:
@@ -174,4 +174,4 @@ def build_udp_packet(src: str, dst: str, dgram: UDPDatagram, ttl: int = 64) -> b
     header = _UDP_HDR.pack(dgram.src_port, dgram.dst_port, length, 0)
     csum = _pseudo_checksum(src, dst, PROTO_UDP, header + dgram.data) or 0xFFFF
     datagram = header[:6] + csum.to_bytes(2, "big") + dgram.data
-    return _build_ipv4(src, dst, PROTO_UDP, datagram, ttl)
+    return build_ipv4(src, dst, PROTO_UDP, datagram, ttl)
