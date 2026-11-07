@@ -155,3 +155,8 @@ Implementation plan: `docs/superpowers/plans/2026-11-07-reverse-tethering.md`.
 ## End-to-end test record
 
 2026-11-07, RMX3392 (Android 14), Wi-Fi off, no SIM service: Android validated the VPN as internet, example.com returned HTTP 200 from the phone shell, a 2 MB download finished in about 1 s. Relay started the app over adb and the VPN consent dialog appeared once. Not yet exercised: unplug/replug mid-page, WhatsApp.
+
+Hub mode, same day, same phone: with sharing on, the phone listens on 31417 (hub) and 31418
+(APK download). A hello over loopback was answered with 10.8.0.10; downloading
+/rtether.apk returned the installed APK byte for byte; `rtether phones` lists the phone and
+its hotspot. Not yet exercised: a second phone joining the hotspot and browsing through the hub.
