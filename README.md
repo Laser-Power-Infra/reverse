@@ -78,6 +78,12 @@ the DNS server (default: the one this PC uses), `--port` changes the relay port.
 - The APK is debug-signed. Fine for the team; a release keystore is a later step.
 - The phone can reach anything the PC can reach on the office network, but not
   services bound to the PC's own loopback address.
+- When the VPN is the phone's only network (no SIM service, Wi-Fi off), Android marks
+  the status bar with a no-network cross and some apps (Facebook, YouTube, Play Store)
+  show "No connection" banners from their own Wi-Fi/mobile checks, even while their data
+  flows through the tunnel (YouTube keeps playing). Browsers, WhatsApp and most apps are
+  unaffected. Workaround: have any SIM registered or any Wi-Fi joined, even without a
+  data plan or internet; the VPN still carries all traffic.
 
 ## Development
 
