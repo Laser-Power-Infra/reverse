@@ -147,7 +147,7 @@ class TetherVpnService : VpnService() {
                 runTunnel(fd, clientAddress, initial = first) {
                     connectToHub(wifi, hubHost, wanted = clientAddress)
                 }
-            } catch (e: IOException) {
+            } catch (e: Exception) { // a SecurityException must show on screen, not crash
                 Log.w(TAG, "client start failed: ${e.message}")
                 _state.value = "Failed: ${e.message}"
                 scope.launch {

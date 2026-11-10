@@ -122,6 +122,7 @@ Facebook/YouTube/Play Store apply on teammates' phones.
 | `Phone found but not authorised` | Tap "Allow" on the phone's USB debugging prompt. |
 | `More than one phone connected` | Unplug the others, or pass `--serial <id>` (see `rtether devices`). |
 | Teammate cannot connect to the hub | Check they are on the hub's hotspot, the address matches the hub screen, and sharing is switched on. |
+| App closes the moment Connect is tapped | That is app 0.1.0; install the update from the hub link `http://<hotspot ip>:31418`. |
 | `No connection from the phone yet` | Open Reverse Tether on the phone and press Start once to grant VPN permission. |
 | `APK not found` | Build it with the Docker command above. |
 | Phone shows the key icon but nothing loads | Run with `--verbose`; if `tcp=` stays 0, another VPN app may be active on the phone. |
@@ -145,7 +146,7 @@ Facebook/YouTube/Play Store apply on teammates' phones.
 
 ```
 cd relay
-uv run pytest        # 65 tests, no phone or Docker needed
+uv run pytest        # 88 tests, no phone or Docker needed
 uv run ruff check .
 ```
 
