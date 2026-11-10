@@ -106,7 +106,9 @@ On each teammate's phone:
 2. Join the hub phone's hotspot. It will say "no internet"; that is expected.
 3. Open Reverse Tether, type the address from the hub's screen into "Hub phone address",
    tap "Connect to phone hub", and tap OK on the VPN dialog the first time.
-4. If the phone has mobile data, Android may prefer it over the no-internet hotspot and
+4. Test with a normal website, not the `:31418` download link: while connected, that link
+   goes through the tunnel to the PC and cannot open. Stop the app to reach it again.
+5. If the phone has mobile data, Android may prefer it over the no-internet hotspot and
    drop the Wi-Fi. Turn mobile data off while using the hub.
 
 Limits: up to 8 teammates (and whatever the phone's hotspot allows); everyone shares one
@@ -160,4 +162,10 @@ Implementation plan: `docs/superpowers/plans/2026-11-07-reverse-tethering.md`.
 Hub mode, same day, same phone: with sharing on, the phone listens on 31417 (hub) and 31418
 (APK download). A hello over loopback was answered with 10.8.0.10; downloading
 /rtether.apk returned the installed APK byte for byte; `rtether phones` lists the phone and
-its hotspot. Not yet exercised: a second phone joining the hotspot and browsing through the hub.
+its hotspot.
+
+2026-11-10, second phone (on the hotspot, app 0.1.1 installed from the hub link): joined
+the hub as 10.8.0.10; the relay carried 16 TCP connections for it (Google push, Facebook,
+Telegram, CDNs) alongside the hub phone's own. A fake teammate from the hub phone's shell
+got a DNS answer back through hub and relay. Known: the `:31418` page is unreachable from
+a connected phone because its traffic goes through the tunnel.
