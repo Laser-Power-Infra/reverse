@@ -24,7 +24,9 @@ Status: code complete; see the bottom of this file for the end-to-end test recor
 
 ## Build the app
 
-Docker Desktop must be running.
+Docker Desktop must be running, and the signing key must be at
+`android/keystore/rtether.keystore`. That file is not in git; copy it from a teammate
+(see Release below).
 
 ```
 docker build -f docker/Dockerfile.android -o dist android/
@@ -82,8 +84,8 @@ Give them the app: open  http://10.79.54.103:31418  on their phone (sharing must
   ready phone.
 - Hotspot phones: while "Share over my Wi-Fi hotspot" is on, the hub phone serves its own
   APK at `http://<hotspot ip>:31418` and shows a QR code for that link. Teammates scan it
-  (or open the link in their browser), tap Download, install, and connect. A phone with nothing installed cannot be pushed to over Wi-Fi;
-  this link is the way to "send" it.
+  (or open the link in their browser), tap Download, install, and connect. A phone with
+  nothing installed cannot be pushed to over Wi-Fi; this link is the way to "send" it.
 - Entries can stay listed as `stale` for about a minute after a phone leaves.
 
 ## Release
@@ -124,16 +126,20 @@ On the hub phone (the one on USB):
 1. Start the USB link as usual (`uv run rtether run` on the PC).
 2. Settings > Hotspot: turn the Wi-Fi hotspot on. Also turn **off** "turn off hotspot
    automatically" so it survives idle time.
-3. In Reverse Tether, switch on "Share over my Wi-Fi hotspot". The screen shows the
-   address teammates must type, for example `10.79.54.103:31417`, and how many are connected.
-   The address changes every time the hotspot is restarted; read it from the screen.
+3. In Reverse Tether, switch on "Share over my Wi-Fi hotspot". The screen shows the hub
+   address, for example `10.79.54.103:31417`, a QR code for the app download link, and
+   how many are connected. The address changes every time the hotspot is restarted.
 
 On each teammate's phone:
 
-1. Install `rtether.apk` (share the file; no PC needed).
-2. Join the hub phone's hotspot. It will say "no internet"; that is expected.
-3. Open Reverse Tether. "Hub phone address" is already filled in with the hub's address
-   (edit it if it differs from the hub's screen). Tap "Connect to phone hub", and tap OK on the VPN dialog the first time.
+1. Join the hub phone's hotspot. It will say "no internet"; that is expected.
+2. Get the app: scan the QR code on the hub's screen with the camera and tap Download
+   on the page that opens. No PC needed. (Or install a shared `rtether.apk`, or download
+   it from the repo's GitHub Releases page.)
+3. Open Reverse Tether. "Hub phone address" is already filled in with the hub's address.
+   Tap "Connect to phone hub", and tap OK on the VPN dialog the first time. If the app
+   was opened on ordinary Wi-Fi, the field holds that router's address; replace it with
+   the one on the hub's screen.
 4. Test with a normal website, not the `:31418` download link: while connected, that link
    goes through the tunnel to the PC and cannot open. Stop the app to reach it again.
 5. If the phone has mobile data, Android may prefer it over the no-internet hotspot and
@@ -152,7 +158,9 @@ Facebook/YouTube/Play Store apply on teammates' phones.
 | `Phone found but not authorised` | Tap "Allow" on the phone's USB debugging prompt. |
 | `More than one phone connected` | Unplug the others, or pass `--serial <id>` (see `rtether devices`). |
 | Teammate cannot connect to the hub | Check they are on the hub's hotspot, the address matches the hub screen, and sharing is switched on. |
-| App closes the moment Connect is tapped | That is app 0.1.0; install the update from the hub link `http://<hotspot ip>:31418`. |
+| App closes the moment Connect is tapped | That is app 0.1.0; install the latest app from the hub's QR code or `http://<hotspot ip>:31418`. |
+| `An Application Control policy has blocked this file (os error 4551)` | Windows blocked an unsigned Python. In `relay/`, rebuild the environment on a signed one: `uv venv --python <path to signed python.exe> --clear`, then `uv sync`. |
+| Phone is plugged in but listed as `offline` or not at all | Unlock the phone, unplug and replug the cable, and tap "Allow" on the USB debugging prompt. |
 | `No connection from the phone yet` | Open Reverse Tether on the phone and press Start once to grant VPN permission. |
 | `APK not found` | Build it with the Docker command above. |
 | Phone shows the key icon but nothing loads | Run with `--verbose`; if `tcp=` stays 0, another VPN app may be active on the phone. |
@@ -162,7 +170,8 @@ Facebook/YouTube/Play Store apply on teammates' phones.
 - IPv4 only. Sites that are IPv6-only will not load.
 - One phone at a time. Plugging in a second replaces the first.
 - Android allows one VPN at a time, so other VPN apps must be off.
-- The APK is debug-signed. Fine for the team; a release keystore is a later step.
+- Every build is signed with one team key that is kept out of git, so updates install
+  over older versions. It is not a Play Store key.
 - The phone can reach anything the PC can reach on the office network, but not
   services bound to the PC's own loopback address.
 - When the VPN is the phone's only network (no SIM service, Wi-Fi off), Android marks
@@ -176,9 +185,11 @@ Facebook/YouTube/Play Store apply on teammates' phones.
 
 ```
 cd relay
-uv run pytest        # 88 tests, no phone or Docker needed
+uv run pytest        # 89 tests, no phone or Docker needed
 uv run ruff check .
 ```
+
+If Windows Application Control blocks `uv run pytest`, use `uv run python -m pytest`.
 
 Design spec: `docs/superpowers/specs/2026-11-07-reverse-tethering-design.md`.
 Implementation plan: `docs/superpowers/plans/2026-11-07-reverse-tethering.md`.
@@ -197,3 +208,8 @@ the hub as 10.8.0.10; the relay carried 16 TCP connections for it (Google push, 
 Telegram, CDNs) alongside the hub phone's own. A fake teammate from the hub phone's shell
 got a DNS answer back through hub and relay. Known: the `:31418` page is unreachable from
 a connected phone because its traffic goes through the tunnel.
+
+2026-11-13, app 0.1.2 on RMX3392: installed over 0.1.1; USB link connected and Android
+validated the VPN. With sharing on, the QR code on the hub screen decodes to
+`http://10.79.54.103:31418`, and /rtether.apk served the built APK byte for byte. Not yet
+exercised: address auto-fill on a second phone, the release workflow on GitHub.
