@@ -217,7 +217,16 @@ def _cmd_install_all(adb, make_adb, apk: Path) -> int:
     return 1 if failures else 0
 
 
+def quiet_resets(loop, context) -> None:
+    # Windows asyncio logs an ERROR when shutting down a socket the peer already reset.
+    if isinstance(context.get("exception"), ConnectionResetError):
+        logging.getLogger("rtether").debug("connection reset by peer: %s", context.get("message"))
+        return
+    loop.default_exception_handler(context)
+
+
 async def _cmd_run(adb, dns: str | None, port: int, verbose: bool) -> int:
+    asyncio.get_running_loop().set_exception_handler(quiet_resets)
     try:
         message, code = device_status_line(adb.devices(), getattr(adb, "serial", None))
     except AdbError as exc:

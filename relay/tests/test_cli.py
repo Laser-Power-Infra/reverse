@@ -169,3 +169,20 @@ def test_run_requires_adb(tmp_path: Path, capsys):
     code = main(["run"], make_adb=lambda tools_dir, serial=None: Adb.locate(tmp_path))
     assert code == 1
     assert "rtether setup" in capsys.readouterr().out
+
+
+def test_quiet_resets_swallows_only_connection_resets():
+    from rtether.cli import quiet_resets
+
+    class Loop:
+        seen = []
+
+        def default_exception_handler(self, context):
+            self.seen.append(context)
+
+    loop = Loop()
+    quiet_resets(loop, {"message": "m", "exception": ConnectionResetError()})
+    assert loop.seen == []
+    other = {"message": "m", "exception": ValueError()}
+    quiet_resets(loop, other)
+    assert loop.seen == [other]
