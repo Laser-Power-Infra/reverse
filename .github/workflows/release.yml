@@ -1,0 +1,45 @@
+name: Release APK
+
+# Push a tag like v0.1.2 to build the APK and publish it as a GitHub release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches versionName
+        run: |
+          if ! grep -q "versionName = \"${TAG#v}\"" android/app/build.gradle.kts; then
+            echo "::error::Tag $TAG does not match versionName in android/app/build.gradle.kts"
+            exit 1
+          fi
+
+      - name: Restore the signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::Secret KEYSTORE_BASE64 is not set (see README, Release)"
+            exit 1
+          fi
+          mkdir -p android/keystore
+          echo "$KEYSTORE_BASE64" | base64 -d > android/keystore/rtether.keystore
+
+      - name: Build the APK
+        run: docker build -f docker/Dockerfile.android -o dist android/
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" dist/rtether.apk --title "Reverse Tether $TAG" --generate-notes \
+            --notes "**Download:** [rtether.apk](https://github.com/${{ github.repository }}/releases/download/$TAG/rtether.apk)"

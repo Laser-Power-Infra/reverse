@@ -81,10 +81,38 @@ Give them the app: open  http://10.79.54.103:31418  on their phone (sharing must
 - USB phones: `uv run rtether install --serial <serial>` installs on one, `--all` on every
   ready phone.
 - Hotspot phones: while "Share over my Wi-Fi hotspot" is on, the hub phone serves its own
-  APK at `http://<hotspot ip>:31418`. Teammates open that in their browser, tap Download,
-  install, and connect. A phone with nothing installed cannot be pushed to over Wi-Fi;
+  APK at `http://<hotspot ip>:31418` and shows a QR code for that link. Teammates scan it
+  (or open the link in their browser), tap Download, install, and connect. A phone with nothing installed cannot be pushed to over Wi-Fi;
   this link is the way to "send" it.
 - Entries can stay listed as `stale` for about a minute after a phone leaves.
+
+## Release
+
+Pushing a version tag makes GitHub build the APK and publish a release whose notes link
+straight to the download (`.github/workflows/release.yml`).
+
+One-time setup per GitHub repo: add the signing keystore as the secret `KEYSTORE_BASE64`
+(Settings > Secrets and variables > Actions). In PowerShell this copies the value:
+
+```
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("android\keystore\rtether.keystore")) | Set-Clipboard
+```
+
+Always use the same keystore file; an APK signed with a different one will not install
+over the existing app. If the file is ever lost, make a new one (phones must then
+uninstall the old app once):
+
+```
+docker run --rm -v "${PWD}/android/keystore:/k" gradle:8.7-jdk17 keytool -genkeypair -keystore /k/rtether.keystore -alias rtether -storepass android -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Reverse Tether"
+```
+
+To release: bump `versionCode` and `versionName` in `android/app/build.gradle.kts`, commit,
+then tag with the same version and push:
+
+```
+git tag v0.1.2
+git push origin main v0.1.2
+```
 
 ## Share with teammates (hub mode)
 
@@ -104,8 +132,8 @@ On each teammate's phone:
 
 1. Install `rtether.apk` (share the file; no PC needed).
 2. Join the hub phone's hotspot. It will say "no internet"; that is expected.
-3. Open Reverse Tether, type the address from the hub's screen into "Hub phone address",
-   tap "Connect to phone hub", and tap OK on the VPN dialog the first time.
+3. Open Reverse Tether. "Hub phone address" is already filled in with the hub's address
+   (edit it if it differs from the hub's screen). Tap "Connect to phone hub", and tap OK on the VPN dialog the first time.
 4. Test with a normal website, not the `:31418` download link: while connected, that link
    goes through the tunnel to the PC and cannot open. Stop the app to reach it again.
 5. If the phone has mobile data, Android may prefer it over the no-internet hotspot and
