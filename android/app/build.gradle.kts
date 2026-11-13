@@ -11,12 +11,13 @@ android {
         applicationId = "com.laserpower.rtether"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
     }
 
     // One stable key for every build, so updates install over earlier versions on every
-    // phone. It is a team-internal key committed to the repo, not a Play Store key.
+    // phone. It is a team-internal key, not a Play Store key. It is kept out of git: builds
+    // use the local file, and the release workflow restores it from a GitHub secret.
     signingConfigs {
         create("team") {
             storeFile = file("../keystore/rtether.keystore")
@@ -50,5 +51,6 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("com.google.zxing:core:3.5.3") // QR encoder for the APK link
     testImplementation("junit:junit:4.13.2")
 }

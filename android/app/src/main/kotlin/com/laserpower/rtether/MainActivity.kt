@@ -2,13 +2,22 @@ package com.laserpower.rtether
 
 import android.Manifest
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.CompoundButton
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.Switch
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
+import java.net.Inet4Address
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -28,6 +37,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var toggle: Button
     private lateinit var shareSwitch: Switch
     private lateinit var hubInfo: TextView
+    private lateinit var hubQr: ImageView
+    private lateinit var hubQrCaption: TextView
+    private var qrLink = ""
     private lateinit var hubHost: EditText
     private lateinit var connectHub: Button
     private var finishAfterConsent = false
@@ -56,6 +68,8 @@ class MainActivity : AppCompatActivity() {
         toggle = findViewById(R.id.toggle)
         shareSwitch = findViewById(R.id.share_switch)
         hubInfo = findViewById(R.id.hub_info)
+        hubQr = findViewById(R.id.hub_qr)
+        hubQrCaption = findViewById(R.id.hub_qr_caption)
         hubHost = findViewById(R.id.hub_host)
         connectHub = findViewById(R.id.connect_hub)
 
@@ -92,6 +106,36 @@ class MainActivity : AppCompatActivity() {
         handleRelayIntent(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (hubHost.text.isEmpty()) wifiGateway()?.let { hubHost.setText(it) }
+    }
+
+    /** On a teammate's hotspot the hub phone is the Wi-Fi gateway, so this is its address. */
+    @Suppress("DEPRECATION") // allNetworks: the active network may be the VPN or mobile data
+    private fun wifiGateway(): String? {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        for (network in cm.allNetworks) {
+            val caps = cm.getNetworkCapabilities(network) ?: continue
+            if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            ) continue
+            val gateway = cm.getLinkProperties(network)?.routes
+                ?.firstOrNull { it.isDefaultRoute && it.gateway is Inet4Address }?.gateway
+            if (gateway != null) return gateway.hostAddress
+        }
+        return null
+    }
+
+    private fun qrBitmap(text: String): Bitmap {
+        val size = 512
+        val matrix = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size)
+        val pixels = IntArray(size * size) {
+            if (matrix.get(it % size, it / size)) Color.BLACK else Color.WHITE
+        }
+        return Bitmap.createBitmap(pixels, size, size, Bitmap.Config.RGB_565)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleRelayIntent(intent)
@@ -117,7 +161,19 @@ class MainActivity : AppCompatActivity() {
                 address.substringBefore(":"),
             )
         }
-        val clientRunning = TetherVpnService.mode.value == TetherVpnService.MODE_CLIENT
+        val link = if (usbRunning && sharing && address != "?") {
+            "http://${address.substringBefore(":")}:${HubProtocol.APK_PORT}"
+        } else {
+            ""
+        }
+        if (link != qrLink) { // this runs every few seconds; only redraw on change
+            qrLink = link
+            if (link.isNotEmpty()) hubQr.setImageBitmap(qrBitmap(link))
+            val visibility = if (link.isEmpty()) View.GONE else View.VISIBLE
+            hubQr.visibility = visibility
+            hubQrCaption.visibility = visibility
+        }
+        val clientRunning =TetherVpnService.mode.value == TetherVpnService.MODE_CLIENT
         connectHub.isEnabled = !usbRunning && !clientRunning
     }
 
