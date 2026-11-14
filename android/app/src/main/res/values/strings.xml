@@ -10,11 +10,11 @@
     <string name="share_switch">Share over my Wi-Fi hotspot</string>
     <string name="hub_needs_usb">Start the USB link first, then turn on your Wi-Fi hotspot.</string>
     <string name="hub_off">Turn on the Wi-Fi hotspot in Settings, then switch sharing on.</string>
-    <string name="hub_no_hotspot">Sharing is on but the Wi-Fi hotspot is off. Turn it on in Settings.</string>
+    <string name="hub_no_hotspot">Sharing is on but the Wi-Fi hotspot is off. Turn it on in Settings; the address and QR code appear here once it is on.</string>
     <string name="hub_on">Teammates: join this phone\'s hotspot, open Reverse Tether and tap Connect.\nAddress: %1$s\n\nNo app yet? Scan the code below, or open http://%3$s:31418\n\n%2$d connected</string>
     <string name="hub_qr_caption">Scan to get the app</string>
     <string name="section_client">Use a teammate\'s phone</string>
     <string name="client_help">Join their hotspot. The address fills in by itself; then tap Connect.</string>
-    <string name="hub_host_hint">Hub phone address, e.g. 10.79.54.103</string>
+    <string name="hub_host_hint">Hub phone address, e.g. 10.79.54.103:31417</string>
     <string name="connect_hub">Connect to phone hub</string>
 </resources>

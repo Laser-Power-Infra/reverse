@@ -5,7 +5,10 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
@@ -40,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var hubQr: ImageView
     private lateinit var hubQrCaption: TextView
     private var qrLink = ""
+    private var autoFilledHost = ""
     private lateinit var hubHost: EditText
     private lateinit var connectHub: Button
     private var finishAfterConsent = false
@@ -106,25 +110,40 @@ class MainActivity : AppCompatActivity() {
         handleRelayIntent(intent)
     }
 
-    override fun onResume() {
-        super.onResume()
-        if (hubHost.text.isEmpty()) wifiGateway()?.let { hubHost.setText(it) }
+    /**
+     * On a teammate's hotspot the hub phone is the Wi-Fi gateway, so its address can be
+     * filled in for them. A callback (not a one-off read) so it also fills when Wi-Fi
+     * joins after the screen is already open.
+     */
+    private val wifiCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onLinkPropertiesChanged(network: Network, link: LinkProperties) {
+            val gateway = link.routes
+                .firstOrNull { it.isDefaultRoute && it.gateway is Inet4Address }?.gateway
+                ?: return
+            val address = "${gateway.hostAddress}:${HubProtocol.HUB_PORT}"
+            runOnUiThread {
+                // Never overwrite what the user typed; do refresh our own earlier fill.
+                val current = hubHost.text.toString()
+                if (current.isEmpty() || current == autoFilledHost) {
+                    hubHost.setText(address)
+                    autoFilledHost = address
+                }
+            }
+        }
     }
 
-    /** On a teammate's hotspot the hub phone is the Wi-Fi gateway, so this is its address. */
-    @Suppress("DEPRECATION") // allNetworks: the active network may be the VPN or mobile data
-    private fun wifiGateway(): String? {
-        val cm = getSystemService(ConnectivityManager::class.java)
-        for (network in cm.allNetworks) {
-            val caps = cm.getNetworkCapabilities(network) ?: continue
-            if (!caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
-            ) continue
-            val gateway = cm.getLinkProperties(network)?.routes
-                ?.firstOrNull { it.isDefaultRoute && it.gateway is Inet4Address }?.gateway
-            if (gateway != null) return gateway.hostAddress
-        }
-        return null
+    override fun onStart() {
+        super.onStart()
+        val wifi = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        getSystemService(ConnectivityManager::class.java).registerNetworkCallback(wifi, wifiCallback)
+    }
+
+    override fun onStop() {
+        getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(wifiCallback)
+        super.onStop()
     }
 
     private fun qrBitmap(text: String): Bitmap {
