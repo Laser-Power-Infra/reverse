@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import struct
 import subprocess
 
 DNS_VIRTUAL = "10.8.0.1"  # the address the phone is told to use for DNS
@@ -41,3 +42,40 @@ def discover_dns_server(runner=subprocess.run) -> str:
     except (OSError, subprocess.SubprocessError, ValueError):
         found = None
     return found or FALLBACK_DNS
+
+
+def _skip_name(payload: bytes, pos: int) -> int:
+    while True:
+        length = payload[pos]
+        if length == 0:
+            return pos + 1
+        if length & 0xC0:  # compression pointer
+            return pos + 2
+        pos += length + 1
+
+
+def answers(payload: bytes) -> list[tuple[str, str]]:
+    """(queried name, address) for every A/AAAA record in a DNS reply; [] if unparseable."""
+    try:
+        _ident, flags, questions, count = struct.unpack_from("!HHHH", payload)
+        if not flags & 0x8000 or questions != 1:
+            return []
+        labels = []
+        pos = 12
+        while payload[pos]:
+            length = payload[pos]
+            labels.append(payload[pos + 1 : pos + 1 + length].decode("ascii", "replace"))
+            pos += length + 1
+        name = ".".join(labels)
+        pos += 5  # root label, type, class
+        found = []
+        for _ in range(count):
+            pos = _skip_name(payload, pos)
+            rtype, _cls, _ttl, rdlen = struct.unpack_from("!HHIH", payload, pos)
+            pos += 10
+            if (rtype, rdlen) in ((1, 4), (28, 16)):
+                found.append((name, str(ipaddress.ip_address(payload[pos : pos + rdlen]))))
+            pos += rdlen
+        return found
+    except (struct.error, IndexError, ValueError):
+        return []

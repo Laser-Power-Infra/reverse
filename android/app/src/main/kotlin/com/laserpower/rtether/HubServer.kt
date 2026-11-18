@@ -56,7 +56,7 @@ class HubServer(
 
     /** Writes a packet from the relay to the teammate that owns its destination address. */
     fun deliver(packet: ByteArray, length: Int): Boolean {
-        val client = clients[HubProtocol.ipv4Destination(packet, length)] ?: return false
+        val client = clients[HubProtocol.destinationKey(packet, length)] ?: return false
         return writeFrame(client, packet, length)
     }
 
@@ -100,7 +100,7 @@ class HubServer(
                 if (length == 0) continue
                 if (length > MAX_FRAME) throw IOException("frame of $length bytes exceeds $MAX_FRAME")
                 input.readFully(buffer, 0, length)
-                if (HubProtocol.ipv4Source(buffer, length) != ip) continue // forged or stray
+                if (HubProtocol.sourceKey(buffer, length) != ip) continue // forged or stray
                 upstream(buffer, length)
             }
         } catch (e: IOException) {

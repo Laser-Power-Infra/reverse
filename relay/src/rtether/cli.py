@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ipaddress
 import logging
+import socket
 from pathlib import Path
 
 from rtether import __version__
@@ -85,6 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--dns", help="upstream DNS server (default: this PC's)")
     run.add_argument("--port", type=int, default=DEFAULT_PORT)
     run.add_argument("--verbose", action="store_true")
+    run.add_argument(
+        "--allow-quic",
+        action="store_true",
+        help="forward UDP 443 (QUIC); by default it is refused so apps use TCP at once",
+    )
     return parser
 
 
@@ -117,7 +124,7 @@ def main(argv: list[str] | None = None, make_adb=Adb.locate) -> int:
         if args.all:
             return _cmd_install_all(adb, make_adb, args.apk)
         return _cmd_install(adb, args.apk)
-    return asyncio.run(_cmd_run(adb, args.dns, args.port, args.verbose))
+    return asyncio.run(_cmd_run(adb, args.dns, args.port, args.verbose, args.allow_quic))
 
 
 def _cmd_setup() -> int:
@@ -217,6 +224,16 @@ def _cmd_install_all(adb, make_adb, apk: Path) -> int:
     return 1 if failures else 0
 
 
+def pc_has_ipv6() -> bool:
+    """True when this PC would send IPv6 from a public address. Nothing is transmitted."""
+    try:
+        with socket.socket(socket.AF_INET6, socket.SOCK_DGRAM) as probe:
+            probe.connect(("2001:4860:4860::8888", 53))
+            return ipaddress.ip_address(probe.getsockname()[0].split("%")[0]).is_global
+    except (OSError, ValueError):
+        return False
+
+
 def quiet_resets(loop, context) -> None:
     # Windows asyncio logs an ERROR when shutting down a socket the peer already reset.
     if isinstance(context.get("exception"), ConnectionResetError):
@@ -225,7 +242,9 @@ def quiet_resets(loop, context) -> None:
     loop.default_exception_handler(context)
 
 
-async def _cmd_run(adb, dns: str | None, port: int, verbose: bool) -> int:
+async def _cmd_run(
+    adb, dns: str | None, port: int, verbose: bool, allow_quic: bool = False
+) -> int:
     asyncio.get_running_loop().set_exception_handler(quiet_resets)
     try:
         message, code = device_status_line(adb.devices(), getattr(adb, "serial", None))
@@ -237,7 +256,11 @@ async def _cmd_run(adb, dns: str | None, port: int, verbose: bool) -> int:
         return code
     dns_server = dns or discover_dns_server()
     print(f"Using DNS server {dns_server}")
-    server = RelayServer("127.0.0.1", port, dns_server, verbose=verbose)
+    has_ipv6 = pc_has_ipv6()
+    print("IPv6: available" if has_ipv6 else "IPv6: not available on this PC (IPv4 only)")
+    server = RelayServer(
+        "127.0.0.1", port, dns_server, verbose=verbose, has_ipv6=has_ipv6, allow_quic=allow_quic
+    )
     try:
         adb.reverse(port)
         try:
@@ -262,6 +285,10 @@ async def _cmd_run(adb, dns: str | None, port: int, verbose: bool) -> int:
             except AdbError:
                 pass
         await server.stop()
+        report = server.router.blocked_report()
+        if report:
+            print("Blocked or unanswered (count, destination, reason):")
+            print("\n".join(report))
         print("Stopped.")
     return 0
 

@@ -40,10 +40,13 @@ class TCPFlow:
         key: FlowKey,
         send: Callable[[bytes], None],
         connector: Connector = asyncio.open_connection,
+        on_blocked: Callable[[str], None] = lambda reason: None,
     ):
         self.key = key
         self._send = send
         self._connector = connector
+        self._on_blocked = on_blocked
+        self._mss = MSS - 20 if ":" in key[0] else MSS  # the IPv6 header is 20 bytes longer
         self.connect_timeout = CONNECT_TIMEOUT
         self.state = "CLOSED"
         self.last_activity = time.monotonic()
@@ -124,6 +127,12 @@ class TCPFlow:
             )
         except (OSError, TimeoutError) as exc:
             log.debug("connect %s:%d failed: %s", dst_ip, dst_port, exc)
+            if isinstance(exc, TimeoutError):
+                self._on_blocked("timed out")
+            elif isinstance(exc, ConnectionRefusedError):
+                self._on_blocked("refused")
+            else:
+                self._on_blocked(exc.strerror or type(exc).__name__)
             if self.state == "SYN_RECEIVED":
                 self._send_rst_for_syn()
                 self.state = "CLOSED"
@@ -190,7 +199,7 @@ class TCPFlow:
                     if self.state == "CLOSED":
                         return
                     continue
-                chunk = await self._reader.read(min(MSS, room))
+                chunk = await self._reader.read(min(self._mss, room))
                 if not chunk:
                     self._on_socket_eof()
                     return

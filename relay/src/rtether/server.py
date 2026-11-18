@@ -25,11 +25,20 @@ class RelayServer:
         verbose: bool = False,
         connector: Connector = asyncio.open_connection,
         allow_loopback: bool = False,
+        has_ipv6: bool = True,
+        allow_quic: bool = False,
     ):
         self._host = host
         self._requested_port = port
         self._verbose = verbose
-        self.router = Router(self._send, dns_server, connector, allow_loopback=allow_loopback)
+        self.router = Router(
+            self._send,
+            dns_server,
+            connector,
+            allow_loopback=allow_loopback,
+            has_ipv6=has_ipv6,
+            allow_quic=allow_quic,
+        )
         self.port = port
         self._server: asyncio.AbstractServer | None = None
         self._client: asyncio.StreamWriter | None = None

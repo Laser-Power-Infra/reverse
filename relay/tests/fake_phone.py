@@ -11,12 +11,12 @@ from rtether.packet import (
     PSH,
     RST,
     SYN,
-    IPv4Packet,
+    IPPacket,
     TCPSegment,
     UDPDatagram,
     build_tcp_packet,
     build_udp_packet,
-    parse_ipv4,
+    parse_ip,
     parse_tcp,
     parse_udp,
 )
@@ -40,13 +40,13 @@ class FakePhone:
         self.writer.write(encode_frame(packet))
         await self.writer.drain()
 
-    async def _recv(self, timeout: float = 2.0) -> IPv4Packet:
+    async def _recv(self, timeout: float = 2.0) -> IPPacket:
         while True:
             frame = await asyncio.wait_for(read_frame(self.reader), timeout)
             if frame is None:
                 raise ConnectionError("relay closed the stream")
             if frame:
-                return parse_ipv4(frame)
+                return parse_ip(frame)
 
     async def _recv_tcp(self, port: int) -> TCPSegment:
         while True:

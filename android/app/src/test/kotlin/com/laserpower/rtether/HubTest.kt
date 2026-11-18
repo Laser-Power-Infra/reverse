@@ -84,9 +84,21 @@ class HubTest {
         packet[0] = 0x45
         packet[12] = 10; packet[13] = 8; packet[14] = 0; packet[15] = 10
         packet[16] = 1; packet[17] = 1; packet[18] = 1; packet[19] = 1
-        assertEquals(first, HubProtocol.ipv4Source(packet, packet.size))
-        assertEquals(HubProtocol.ip(1, 1, 1, 1), HubProtocol.ipv4Destination(packet, packet.size))
-        assertEquals(0, HubProtocol.ipv4Source(packet, 10))
+        assertEquals(first, HubProtocol.sourceKey(packet, packet.size))
+        assertEquals(HubProtocol.ip(1, 1, 1, 1), HubProtocol.destinationKey(packet, packet.size))
+        assertEquals(0, HubProtocol.sourceKey(packet, 10))
+    }
+
+    @Test
+    fun `IPv6 tunnel addresses map to the phone's IPv4 key`() {
+        val packet = ByteArray(60)
+        packet[0] = 0x60
+        packet[8] = 0xfd.toByte(); packet[11] = 8; packet[23] = 10 // source fd00:8::a
+        packet[24] = 0x20; packet[25] = 0x01; packet[39] = 1 // destination 2001::1
+        assertEquals(first, HubProtocol.sourceKey(packet, packet.size))
+        assertEquals(0, HubProtocol.destinationKey(packet, packet.size))
+        assertEquals(0, HubProtocol.sourceKey(packet, 39))
+        assertEquals("fd00:8::a", HubProtocol.dottedV6(first))
     }
 
     @Test

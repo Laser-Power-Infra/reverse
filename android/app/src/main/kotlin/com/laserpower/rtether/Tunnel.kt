@@ -138,7 +138,7 @@ class Tunnel(
             if (length == 0) continue // keepalive
             if (length > MAX_FRAME) throw IOException("frame of $length bytes exceeds $MAX_FRAME")
             input.readFully(buffer, 0, length)
-            val destination = HubProtocol.ipv4Destination(buffer, length)
+            val destination = HubProtocol.destinationKey(buffer, length)
             if (destination == ownAddress) {
                 output.write(buffer, 0, length)
             } else {

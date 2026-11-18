@@ -36,11 +36,25 @@ object HubProtocol {
 
     fun decodeReply(frame: ByteArray): Int? = if (frame.size == 4) readInt(frame, 0) else null
 
-    fun ipv4Source(packet: ByteArray, length: Int): Int =
-        if (length < 20) 0 else readInt(packet, 12)
+    /** fd00:8::X, the IPv6 address of the phone whose IPv4 address is 10.8.0.X. */
+    fun dottedV6(ip: Int): String = "fd00:8::${(ip and 0xff).toString(16)}"
 
-    fun ipv4Destination(packet: ByteArray, length: Int): Int =
-        if (length < 20) 0 else readInt(packet, 16)
+    /** The 10.8.0.X address of the phone a packet came from; 0 when it is not a tunnel address. */
+    fun sourceKey(packet: ByteArray, length: Int): Int = addressKey(packet, length, 12, 8)
+
+    /** The 10.8.0.X address of the phone a packet is for; 0 when it is not a tunnel address. */
+    fun destinationKey(packet: ByteArray, length: Int): Int = addressKey(packet, length, 16, 24)
+
+    private fun addressKey(packet: ByteArray, length: Int, v4At: Int, v6At: Int): Int {
+        if (length < 20) return 0
+        if ((packet[0].toInt() and 0xf0) != 0x60) return readInt(packet, v4At)
+        if (length < 40) return 0
+        for (i in V6_PREFIX.indices) if (packet[v6At + i] != V6_PREFIX[i]) return 0
+        return SUBNET or (packet[v6At + 15].toInt() and 0xff)
+    }
+
+    /** The first 15 bytes of fd00:8::X. */
+    private val V6_PREFIX = byteArrayOf(0xfd.toByte(), 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 
     private fun toBytes(v: Int) = byteArrayOf(
         (v ushr 24).toByte(), (v ushr 16).toByte(), (v ushr 8).toByte(), v.toByte(),

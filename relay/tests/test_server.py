@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from rtether.framing import encode_frame, read_frame
-from rtether.packet import UDPDatagram, build_udp_packet, parse_ipv4, parse_udp
+from rtether.packet import UDPDatagram, build_udp_packet, parse_ip, parse_udp
 from rtether.server import EVICT_INTERVAL, KEEPALIVE_INTERVAL, RelayServer
 
 PHONE = "10.8.0.2"
@@ -51,7 +51,7 @@ async def test_client_frames_reach_router_and_replies_are_framed(server, echo_po
     writer.write(encode_frame(udp_packet(echo_port)))
     await writer.drain()
     reply = await asyncio.wait_for(read_frame(reader), 2)
-    ip = parse_ipv4(reply)
+    ip = parse_ip(reply)
     assert ip.dst == PHONE
     assert parse_udp(ip).data == b"ping"
     writer.close()

@@ -58,7 +58,44 @@ A key icon appears in the phone's status bar while it is sharing. Ctrl+C stops i
 and removes the icon. Unplugging and replugging the cable reconnects on its own.
 
 Options: `--verbose` prints flow counts every 10 seconds, `--dns 8.8.8.8` overrides
-the DNS server (default: the one this PC uses), `--port` changes the relay port.
+the DNS server (default: the one this PC uses), `--port` changes the relay port,
+`--allow-quic` forwards QUIC (see below).
+
+**QUIC is refused by default.** Many apps (Instagram, WhatsApp, Facebook, Chrome) first try
+QUIC, which is HTTPS over UDP port 443. Office networks often drop it silently, and each
+app then waits for a timeout before retrying over ordinary TCP. The relay answers UDP 443
+with "unreachable" straight away, so apps use TCP at once. On a network where QUIC works,
+`uv run rtether run --allow-quic` forwards it.
+
+**What did not get through.** The relay prints a `blocked:` line the first time a
+destination fails, and a full list with counts when you press Ctrl+C, for example:
+
+```
+Blocked or unanswered (count, destination, reason):
+    12x  tcp 157.240.1.35:443 (graph.facebook.com): timed out
+     4x  udp 142.250.183.14:443 (www.google.com): no reply
+   230x  quic (udp 443): refused so apps use TCP
+```
+
+`timed out`, `refused` and `no reply` mean this PC's network did not let the connection
+through; the relay only passes on what the PC itself can reach. Names come from the
+phone's DNS lookups, so a phone using Private DNS shows addresses only.
+
+A `blocked:` line is printed only the first time, so a quiet window does not prove that
+nothing was refused. To see everything one app does, record a trace and reproduce the
+problem:
+
+```
+uv run rtether run --verbose 2>&1 | Tee-Object game.log
+```
+
+`game.log` then has a `tcp start` / `udp start` line for every conversation the phone
+opens and a `tcp end` / `udp end` line saying how it finished (closed, reset after idle,
+how many replies).
+
+**Games.** Everything one phone port sends leaves the PC from one port, whatever the
+destination, so game servers see an ordinary (not "symmetric") NAT and can pair players
+directly. Replies are accepted only from addresses that phone port has contacted.
 
 ## Who is connected
 
@@ -159,15 +196,25 @@ Facebook/YouTube/Play Store apply on teammates' phones.
 | `More than one phone connected` | Unplug the others, or pass `--serial <id>` (see `rtether devices`). |
 | Teammate cannot connect to the hub | Check they are on the hub's hotspot, the address matches the hub screen, and sharing is switched on. |
 | App closes the moment Connect is tapped | That is app 0.1.0; install the latest app from the hub's QR code or `http://<hotspot ip>:31418`. |
-| `An Application Control policy has blocked this file (os error 4551)` | Windows blocked an unsigned Python. In `relay/`, rebuild the environment on a signed one: `uv venv --python <path to signed python.exe> --clear`, then `uv sync`. |
+| `An Application Control policy has blocked this file (os error 4551)` | Windows Smart App Control blocks unsigned programs, and both the `rtether` command (an unsigned launcher uv generates) and uv's own Python download are unsigned. Use `uv run python -m rtether run` (any subcommand works the same way). If `python.exe` itself is blocked, rebuild the environment on a signed Python: `uv venv --python <path to signed python.exe> --clear`, then `uv sync`. |
 | Phone is plugged in but listed as `offline` or not at all | Unlock the phone, unplug and replug the cable, and tap "Allow" on the USB debugging prompt. |
 | `No connection from the phone yet` | Open Reverse Tether on the phone and press Start once to grant VPN permission. |
 | `APK not found` | Build it with the Docker command above. |
+| One app or site does not load, others do | Press Ctrl+C on the relay and read the "Blocked or unanswered" list (see Daily use). |
 | Phone shows the key icon but nothing loads | Run with `--verbose`; if `tcp=` stays 0, another VPN app may be active on the phone. |
 
 ## Limits
 
-- IPv4 only. Sites that are IPv6-only will not load.
+- IPv6 works only when the PC's own network has IPv6 internet; the relay prints
+  `IPv6: available` or `IPv6: not available on this PC` at start. Without it, IPv6-only
+  sites will not load and everything else uses IPv4 as before. IPv6 packets with
+  extension headers are not carried.
+- Ping is answered by the relay itself, so apps that test the connection with a ping see
+  one. It therefore cannot show that a particular host is down.
+- Voice and video calls send audio over UDP. If the PC's network drops that UDP, calls
+  stay poor or fail; the relay cannot change what the network allows.
+- Packets too big for the tunnel (fragmented, over 1400 bytes) are not carried; the relay
+  reports them as `bad packet: fragmented packets are not supported`.
 - One phone at a time. Plugging in a second replaces the first.
 - Android allows one VPN at a time, so other VPN apps must be off.
 - Every build is signed with one team key that is kept out of git, so updates install
@@ -185,7 +232,7 @@ Facebook/YouTube/Play Store apply on teammates' phones.
 
 ```
 cd relay
-uv run pytest        # 89 tests, no phone or Docker needed
+uv run pytest        # 105 tests, no phone or Docker needed
 uv run ruff check .
 ```
 

@@ -4,7 +4,7 @@ import socket
 import pytest
 
 from rtether.dns import DNS_VIRTUAL
-from rtether.packet import UDPDatagram, parse_ipv4, parse_udp
+from rtether.packet import UDPDatagram, parse_ip, parse_udp
 from rtether.udp import UDPFlow
 
 PHONE = "10.8.0.2"
@@ -28,7 +28,7 @@ async def echo_port():
 
 
 def _reply(sent: list[bytes]):
-    ip = parse_ipv4(sent[-1])
+    ip = parse_ip(sent[-1])
     return ip, parse_udp(ip)
 
 
@@ -40,8 +40,8 @@ async def _wait_for(sent: list[bytes], count: int, timeout: float = 1.0) -> None
 
 async def test_datagram_relayed_and_reply_returned(echo_port):
     sent: list[bytes] = []
-    flow = UDPFlow((PHONE, PHONE_PORT, "127.0.0.1", echo_port), sent.append, "1.1.1.1")
-    await flow.handle(UDPDatagram(PHONE_PORT, echo_port, b"hello"))
+    flow = UDPFlow((PHONE, PHONE_PORT), sent.append, "1.1.1.1")
+    await flow.handle("127.0.0.1", UDPDatagram(PHONE_PORT, echo_port, b"hello"))
     await _wait_for(sent, 1)
     ip, dgram = _reply(sent)
     assert (ip.src, dgram.src_port) == ("127.0.0.1", echo_port)
@@ -52,11 +52,9 @@ async def test_datagram_relayed_and_reply_returned(echo_port):
 
 async def test_dns_virtual_is_rewritten(echo_port):
     sent: list[bytes] = []
-    flow = UDPFlow(
-        (PHONE, PHONE_PORT, DNS_VIRTUAL, 53), sent.append, "127.0.0.1", dns_port=echo_port
-    )
+    flow = UDPFlow((PHONE, PHONE_PORT), sent.append, "127.0.0.1", dns_port=echo_port)
+    await flow.handle(DNS_VIRTUAL, UDPDatagram(PHONE_PORT, 53, b"query"))
     assert flow.is_dns
-    await flow.handle(UDPDatagram(PHONE_PORT, 53, b"query"))
     await _wait_for(sent, 1)
     ip, dgram = _reply(sent)
     assert (ip.src, dgram.src_port) == (DNS_VIRTUAL, 53)
@@ -70,10 +68,10 @@ async def test_unreachable_destination_does_not_crash():
     closed_port = probe.getsockname()[1]
     probe.close()
     sent: list[bytes] = []
-    flow = UDPFlow((PHONE, PHONE_PORT, "127.0.0.1", closed_port), sent.append, "1.1.1.1")
-    await flow.handle(UDPDatagram(PHONE_PORT, closed_port, b"one"))
+    flow = UDPFlow((PHONE, PHONE_PORT), sent.append, "1.1.1.1")
+    await flow.handle("127.0.0.1", UDPDatagram(PHONE_PORT, closed_port, b"one"))
     await asyncio.sleep(0.05)
-    await flow.handle(UDPDatagram(PHONE_PORT, closed_port, b"two"))
+    await flow.handle("127.0.0.1", UDPDatagram(PHONE_PORT, closed_port, b"two"))
     await asyncio.sleep(0.05)
     assert not flow.closed
     assert sent == []
@@ -83,17 +81,45 @@ async def test_unreachable_destination_does_not_crash():
     poke.close()
     await _wait_for(sent, 1)
     assert len(sent) == 1
-    assert parse_udp(parse_ipv4(sent[0])).data == b"still alive"
+    assert parse_udp(parse_ip(sent[0])).data == b"still alive"
     flow.close()
 
 
 async def test_close_releases_socket(echo_port):
     sent: list[bytes] = []
-    flow = UDPFlow((PHONE, PHONE_PORT, "127.0.0.1", echo_port), sent.append, "1.1.1.1")
-    await flow.handle(UDPDatagram(PHONE_PORT, echo_port, b"hello"))
+    flow = UDPFlow((PHONE, PHONE_PORT), sent.append, "1.1.1.1")
+    await flow.handle("127.0.0.1", UDPDatagram(PHONE_PORT, echo_port, b"hello"))
     await _wait_for(sent, 1)
     flow.close()
     assert flow.closed
-    await flow.handle(UDPDatagram(PHONE_PORT, echo_port, b"again"))
+    await flow.handle("127.0.0.1", UDPDatagram(PHONE_PORT, echo_port, b"again"))
     await asyncio.sleep(0.05)
     assert len(sent) == 1
+
+
+async def test_one_phone_port_keeps_one_pc_port_for_every_destination(echo_port):
+    """Otherwise the phone looks like it is behind a symmetric NAT and games refuse to pair."""
+    loop = asyncio.get_running_loop()
+    other, _ = await loop.create_datagram_endpoint(_Echo, local_addr=("127.0.0.1", 0))
+    other_port = other.get_extra_info("sockname")[1]
+    sent: list[bytes] = []
+    flow = UDPFlow((PHONE, PHONE_PORT), sent.append, "1.1.1.1")
+    await flow.handle("127.0.0.1", UDPDatagram(PHONE_PORT, echo_port, b"a"))
+    first = flow.local_port
+    await flow.handle("127.0.0.1", UDPDatagram(PHONE_PORT, other_port, b"b"))
+    await _wait_for(sent, 2)
+    assert flow.local_port == first
+    assert {parse_udp(parse_ip(p)).src_port for p in sent} == {echo_port, other_port}
+    assert flow.replies == {("127.0.0.1", echo_port): 1, ("127.0.0.1", other_port): 1}
+    flow.close()
+    other.close()
+
+
+async def test_reply_from_an_address_never_contacted_is_dropped(echo_port):
+    sent: list[bytes] = []
+    flow = UDPFlow((PHONE, PHONE_PORT), sent.append, "1.1.1.1")
+    await flow.handle("127.0.0.1", UDPDatagram(PHONE_PORT, echo_port, b"a"))
+    await _wait_for(sent, 1)
+    flow._on_reply(b"intruder", ("203.0.113.9", 1234))
+    assert len(sent) == 1
+    flow.close()

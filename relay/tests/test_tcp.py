@@ -3,7 +3,7 @@ import socket
 
 import pytest
 
-from rtether.packet import ACK, FIN, PSH, RST, SYN, TCPSegment, parse_ipv4, parse_tcp
+from rtether.packet import ACK, FIN, PSH, RST, SYN, TCPSegment, parse_ip, parse_tcp
 from rtether.tcp import MSS, TCPFlow
 
 PHONE = "10.8.0.2"
@@ -66,7 +66,7 @@ class Harness:
         self.flow = TCPFlow(self.key, self.sent.append, connector)
 
     def segs(self) -> list[TCPSegment]:
-        return [parse_tcp(parse_ipv4(raw)) for raw in self.sent]
+        return [parse_tcp(parse_ip(raw)) for raw in self.sent]
 
     def last(self) -> TCPSegment:
         return self.segs()[-1]

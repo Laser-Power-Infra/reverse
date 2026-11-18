@@ -175,7 +175,8 @@ def test_quiet_resets_swallows_only_connection_resets():
     from rtether.cli import quiet_resets
 
     class Loop:
-        seen = []
+        def __init__(self):
+            self.seen = []
 
         def default_exception_handler(self, context):
             self.seen.append(context)

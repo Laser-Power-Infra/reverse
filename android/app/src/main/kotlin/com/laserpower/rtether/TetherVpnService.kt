@@ -259,6 +259,8 @@ class TetherVpnService : VpnService() {
                 .setSession(getString(R.string.app_name))
                 .addAddress(HubProtocol.dotted(address), 24)
                 .addRoute("0.0.0.0", 0)
+                .addAddress(HubProtocol.dottedV6(address), 64)
+                .addRoute("::", 0)
                 .addDnsServer("10.8.0.1")
                 .setMtu(1400)
                 .setBlocking(true)
